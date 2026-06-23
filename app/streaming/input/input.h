@@ -269,6 +269,18 @@ private:
     float m_PinchWheelRemainder;
     bool m_TouchpadWindowRegistered;
     bool m_TouchpadContactDown[MAX_FINGERS];
+    bool m_TouchpadHavePosition[MAX_FINGERS];
+    float m_TouchpadX[MAX_FINGERS];
+    float m_TouchpadY[MAX_FINGERS];
+    bool m_TouchpadGestureTracking;
+    bool m_TouchpadNativeGestureActive;
+    bool m_TouchpadScrollGestureActive;
+    float m_TouchpadGestureStartCenterX;
+    float m_TouchpadGestureStartCenterY;
+    float m_TouchpadGestureStartDistance;
+    Uint32 m_TouchpadSuppressWheelUntil;
+    bool m_TouchpadLoggedSuppressedWheel;
+    uint32_t m_TouchpadLastFrameId;
 
     static const int k_ButtonMap[];
 };

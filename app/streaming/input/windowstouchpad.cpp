@@ -5,11 +5,16 @@
 #include <SDL_syswm.h>
 
 #ifdef Q_OS_WIN32
+#include <cmath>
 #include <windows.h>
 
 namespace {
 typedef BOOL (WINAPI *RegisterTouchpadCapableWindowFn)(HWND hwnd, BOOL touchpadCapable);
 typedef BOOL (WINAPI *SkipPointerFrameMessagesFn)(UINT32 pointerId);
+
+constexpr float PINCH_DISTANCE_THRESHOLD = 0.025f;
+constexpr float SCROLL_CENTER_THRESHOLD = 0.020f;
+constexpr Uint32 PINCH_WHEEL_SUPPRESS_MS = 250;
 
 RegisterTouchpadCapableWindowFn pRegisterTouchpadCapableWindow = nullptr;
 SkipPointerFrameMessagesFn pSkipPointerFrameMessages = nullptr;
@@ -126,13 +131,24 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
         return true;
     }
 
+    if (pointerCount > 0 && contacts[0].frameId == m_TouchpadLastFrameId) {
+        return true;
+    }
+    if (pointerCount > 0) {
+        m_TouchpadLastFrameId = contacts[0].frameId;
+    }
+
     if (!(LiGetHostFeatureFlags() & LI_FF_PEN_TOUCH_EVENTS)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Host does not support native touch events; ignoring native touchpad frame");
         return true;
     }
 
-    bool present[MAX_FINGERS] = {};
+    bool framePresent[MAX_FINGERS] = {};
+    float frameX[MAX_FINGERS] = {};
+    float frameY[MAX_FINGERS] = {};
+    bool frameSeen[MAX_FINGERS] = {};
+
     for (UINT32 i = 0; i < pointerCount; i++) {
         const POINTER_INFO& pointerInfo = contacts[i];
         const UINT32 contactId = pointerInfo.pointerId;
@@ -142,10 +158,11 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
             continue;
         }
 
-        present[slot] = (pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
-        if (!present[slot] && !m_TouchpadContactDown[slot]) {
+        framePresent[slot] = (pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
+        if (!framePresent[slot] && !m_TouchpadContactDown[slot]) {
             continue;
         }
+        frameSeen[slot] = true;
 
         RECT deviceRect;
         RECT displayRect;
@@ -158,47 +175,123 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
             continue;
         }
 
-        const float x = qBound(0.0f,
-                               static_cast<float>(pointerInfo.ptHimetricLocation.x - deviceRect.left) /
-                                    static_cast<float>(deviceRect.right - deviceRect.left),
-                               1.0f);
-        const float y = qBound(0.0f,
-                               static_cast<float>(pointerInfo.ptHimetricLocation.y - deviceRect.top) /
-                                    static_cast<float>(deviceRect.bottom - deviceRect.top),
-                               1.0f);
-
-        uint8_t eventType;
-        if (present[slot] && !m_TouchpadContactDown[slot]) {
-            eventType = LI_TOUCH_EVENT_DOWN;
+        framePresent[slot] = (pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
+        frameX[slot] = qBound(0.0f,
+                              static_cast<float>(pointerInfo.ptHimetricLocation.x - deviceRect.left) /
+                                   static_cast<float>(deviceRect.right - deviceRect.left),
+                              1.0f);
+        frameY[slot] = qBound(0.0f,
+                              static_cast<float>(pointerInfo.ptHimetricLocation.y - deviceRect.top) /
+                                   static_cast<float>(deviceRect.bottom - deviceRect.top),
+                              1.0f);
+        if (!framePresent[slot] && m_TouchpadHavePosition[slot]) {
+            frameX[slot] = m_TouchpadX[slot];
+            frameY[slot] = m_TouchpadY[slot];
         }
-        else if (present[slot]) {
-            eventType = LI_TOUCH_EVENT_MOVE;
+    }
+
+    const bool twoFingersPresent = framePresent[0] && framePresent[1];
+    const bool twoFingersTracked = m_TouchpadHavePosition[0] && m_TouchpadHavePosition[1];
+
+    if (twoFingersPresent) {
+        const float centerX = (frameX[0] + frameX[1]) * 0.5f;
+        const float centerY = (frameY[0] + frameY[1]) * 0.5f;
+        const float distanceX = frameX[0] - frameX[1];
+        const float distanceY = frameY[0] - frameY[1];
+        const float distance = std::sqrt(distanceX * distanceX + distanceY * distanceY);
+
+        if (!m_TouchpadGestureTracking || !twoFingersTracked) {
+            m_TouchpadGestureTracking = true;
+            m_TouchpadNativeGestureActive = false;
+            m_TouchpadScrollGestureActive = false;
+            m_TouchpadGestureStartCenterX = centerX;
+            m_TouchpadGestureStartCenterY = centerY;
+            m_TouchpadGestureStartDistance = distance;
         }
-        else {
-            eventType = LI_TOUCH_EVENT_UP;
+        else if (!m_TouchpadNativeGestureActive && !m_TouchpadScrollGestureActive) {
+            const float centerDeltaX = centerX - m_TouchpadGestureStartCenterX;
+            const float centerDeltaY = centerY - m_TouchpadGestureStartCenterY;
+            const float centerDelta = std::sqrt(centerDeltaX * centerDeltaX + centerDeltaY * centerDeltaY);
+            const float distanceDelta = std::fabs(distance - m_TouchpadGestureStartDistance);
+
+            if (distanceDelta >= PINCH_DISTANCE_THRESHOLD &&
+                    distanceDelta > centerDelta * 1.35f) {
+                m_TouchpadNativeGestureActive = true;
+                m_TouchpadSuppressWheelUntil = SDL_GetTicks() + PINCH_WHEEL_SUPPRESS_MS;
+                m_TouchpadLoggedSuppressedWheel = false;
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "Native touchpad pinch selected distanceDelta=%.4f centerDelta=%.4f",
+                            distanceDelta, centerDelta);
+            }
+            else if (centerDelta >= SCROLL_CENTER_THRESHOLD &&
+                     centerDelta > distanceDelta * 1.35f) {
+                m_TouchpadScrollGestureActive = true;
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "Native touchpad scroll ignored distanceDelta=%.4f centerDelta=%.4f",
+                            distanceDelta, centerDelta);
+            }
         }
 
-        LiSendTouchEvent(eventType, slot + 1, x, y, 1.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
-        m_TouchpadContactDown[slot] = present[slot];
+        if (m_TouchpadNativeGestureActive) {
+            m_TouchpadSuppressWheelUntil = SDL_GetTicks() + PINCH_WHEEL_SUPPRESS_MS;
+        }
+    }
+    else if (m_TouchpadGestureTracking) {
+        if (m_TouchpadNativeGestureActive) {
+            m_TouchpadSuppressWheelUntil = SDL_GetTicks() + PINCH_WHEEL_SUPPRESS_MS;
+        }
+        m_TouchpadGestureTracking = false;
+        m_TouchpadNativeGestureActive = false;
+        m_TouchpadScrollGestureActive = false;
+    }
 
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Native touchpad contact event=%u slot=%d id=%u flags=0x%08lx x=%.4f y=%.4f pixel=(%ld,%ld) pixelRaw=(%ld,%ld) himetric=(%ld,%ld) himetricRaw=(%ld,%ld) device=(%ld,%ld,%ld,%ld) display=(%ld,%ld,%ld,%ld) frameContacts=%u",
-                    eventType, slot, contactId,
-                    static_cast<unsigned long>(pointerInfo.pointerFlags),
-                    x, y,
-                    pointerInfo.ptPixelLocation.x, pointerInfo.ptPixelLocation.y,
-                    pointerInfo.ptPixelLocationRaw.x, pointerInfo.ptPixelLocationRaw.y,
-                    pointerInfo.ptHimetricLocation.x, pointerInfo.ptHimetricLocation.y,
-                    pointerInfo.ptHimetricLocationRaw.x, pointerInfo.ptHimetricLocationRaw.y,
-                    deviceRect.left, deviceRect.top, deviceRect.right, deviceRect.bottom,
-                    displayRect.left, displayRect.top, displayRect.right, displayRect.bottom,
-                    pointerCount);
+    if (m_TouchpadNativeGestureActive) {
+        for (int slot = 0; slot < MAX_FINGERS; slot++) {
+            if (!framePresent[slot] && !m_TouchpadContactDown[slot]) {
+                continue;
+            }
+
+            uint8_t eventType;
+            if (framePresent[slot] && !m_TouchpadContactDown[slot]) {
+                eventType = LI_TOUCH_EVENT_DOWN;
+            }
+            else if (framePresent[slot]) {
+                eventType = LI_TOUCH_EVENT_MOVE;
+            }
+            else {
+                eventType = LI_TOUCH_EVENT_UP;
+            }
+
+            LiSendTouchEvent(eventType, slot + 1, frameX[slot], frameY[slot], 1.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+            m_TouchpadContactDown[slot] = framePresent[slot];
+        }
+    }
+    else {
+        bool hadContact = false;
+        for (int slot = 0; slot < MAX_FINGERS; slot++) {
+            if (m_TouchpadContactDown[slot]) {
+                hadContact = true;
+                m_TouchpadContactDown[slot] = false;
+            }
+        }
+
+        if (hadContact) {
+            LiSendTouchEvent(LI_TOUCH_EVENT_CANCEL_ALL, 0, 0.0f, 0.0f, 0.0f,
+                             0.0f, 0.0f, LI_ROT_UNKNOWN);
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "Cancelled native touchpad contacts after non-pinch gesture");
+        }
     }
 
     for (int slot = 0; slot < MAX_FINGERS; slot++) {
-        if (m_TouchpadContactDown[slot] && !present[slot] && message == WM_POINTERUP) {
-            LiSendTouchEvent(LI_TOUCH_EVENT_UP, slot + 1, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
-            m_TouchpadContactDown[slot] = false;
+        if (!frameSeen[slot] && !framePresent[slot]) {
+            continue;
+        }
+
+        m_TouchpadHavePosition[slot] = framePresent[slot];
+        if (framePresent[slot]) {
+            m_TouchpadX[slot] = frameX[slot];
+            m_TouchpadY[slot] = frameY[slot];
         }
     }
 
@@ -237,4 +330,11 @@ void SdlInputHandler::cancelNativeTouchpadContacts()
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                     "Cancelled native touchpad contacts");
     }
+
+    SDL_zero(m_TouchpadHavePosition);
+    SDL_zero(m_TouchpadX);
+    SDL_zero(m_TouchpadY);
+    m_TouchpadGestureTracking = false;
+    m_TouchpadNativeGestureActive = false;
+    m_TouchpadScrollGestureActive = false;
 }

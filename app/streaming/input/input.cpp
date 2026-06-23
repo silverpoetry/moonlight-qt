@@ -38,7 +38,16 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_PinchZoomSentModifier(false),
       m_LastPinchZoomArgument(0),
       m_PinchWheelRemainder(0.0f),
-      m_TouchpadWindowRegistered(false)
+      m_TouchpadWindowRegistered(false),
+      m_TouchpadGestureTracking(false),
+      m_TouchpadNativeGestureActive(false),
+      m_TouchpadScrollGestureActive(false),
+      m_TouchpadGestureStartCenterX(0.0f),
+      m_TouchpadGestureStartCenterY(0.0f),
+      m_TouchpadGestureStartDistance(0.0f),
+      m_TouchpadSuppressWheelUntil(0),
+      m_TouchpadLoggedSuppressedWheel(false),
+      m_TouchpadLastFrameId(0)
 {
     // System keys are always captured when running without a DE
     if (!WMUtils::isRunningDesktopEnvironment()) {
@@ -207,6 +216,9 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     SDL_zero(m_LastTouchUpEvent);
     SDL_zero(m_TouchDownEvent);
     SDL_zero(m_TouchpadContactDown);
+    SDL_zero(m_TouchpadHavePosition);
+    SDL_zero(m_TouchpadX);
+    SDL_zero(m_TouchpadY);
 }
 
 SdlInputHandler::~SdlInputHandler()

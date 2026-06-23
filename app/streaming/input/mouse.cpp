@@ -165,6 +165,21 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         return;
     }
 
+    if (m_TouchpadSuppressWheelUntil != 0) {
+        const Sint32 remainingMs = static_cast<Sint32>(m_TouchpadSuppressWheelUntil - SDL_GetTicks());
+        if (remainingMs > 0) {
+            if (!m_TouchpadLoggedSuppressedWheel) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "Suppressing SDL wheel during native touchpad pinch gesture");
+                m_TouchpadLoggedSuppressedWheel = true;
+            }
+            return;
+        }
+
+        m_TouchpadSuppressWheelUntil = 0;
+        m_TouchpadLoggedSuppressedWheel = false;
+    }
+
     if (m_AbsoluteMouseMode) {
         int mouseX, mouseY;
         SDL_GetMouseState(&mouseX, &mouseY);
