@@ -3,7 +3,14 @@
 #include "settings/streamingpreferences.h"
 #include "backend/computermanager.h"
 
+#ifdef Q_OS_WIN32
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+#endif
+
 #include "SDL_compat.h"
+#include <SDL_syswm.h>
 
 struct GamepadState {
     SDL_GameController* controller;
@@ -130,6 +137,8 @@ public:
 
     void handleTouchFingerEvent(SDL_TouchFingerEvent* event);
 
+    bool handleSystemWindowEvent(SDL_SysWMmsg* msg);
+
     int getAttachedGamepadMask();
 
     void raiseAllKeys();
@@ -187,6 +196,8 @@ private:
     void handleRelativeFingerEvent(SDL_TouchFingerEvent* event);
 
     void performSpecialKeyCombo(KeyCombo combo);
+
+    void releasePinchZoomModifier();
 
     static
     Uint32 longPressTimerCallback(Uint32 interval, void* param);
@@ -248,6 +259,10 @@ private:
     SDL_TimerID m_DragTimer;
     char m_DragButton;
     int m_NumFingersDown;
+    bool m_PinchZoomActive;
+    bool m_PinchZoomSentModifier;
+    unsigned long long m_LastPinchZoomArgument;
+    float m_PinchWheelRemainder;
 
     static const int k_ButtonMap[];
 };

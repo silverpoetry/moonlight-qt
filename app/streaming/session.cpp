@@ -2303,6 +2303,9 @@ void Session::exec()
             goto DispatchDeferredCleanup;
 
         case SDL_SYSWMEVENT:
+            if (m_InputHandler != nullptr && m_InputHandler->handleSystemWindowEvent(event.syswm.msg)) {
+                break;
+            }
 #ifdef Q_OS_WIN32
             if (event.syswm.msg != nullptr &&
                     event.syswm.msg->subsystem == SDL_SYSWM_WINDOWS &&
