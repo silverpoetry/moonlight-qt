@@ -460,9 +460,17 @@ int main(int argc, char *argv[])
     HANDLE oldConErr = GetStdHandle(STD_ERROR_HANDLE);
 #endif
 
+    const bool fileLoggingEnabled = QSettings().value("enablefilelogging", false).toBool();
+    bool loggingHandlersInstalled = false;
+#if !SDL_VERSION_ATLEAST(3, 0, 0)
+    SDL_LogOutputFunction oldSdlLogFn = nullptr;
+    void* oldSdlLogUserdata = nullptr;
+#endif
+
 #ifdef LOG_TO_FILE
     QDir tempDir(Path::getLogDir());
 
+    if (fileLoggingEnabled)
 #ifdef Q_OS_WIN32
     // Only log to a file if the user didn't redirect stderr somewhere else
     if (IS_UNSPECIFIED_HANDLE(oldConErr))
@@ -476,23 +484,24 @@ int main(int argc, char *argv[])
     }
 #endif
 
-    // Serialize log messages on a single thread
-    s_LoggerThread.setMaxThreadCount(1);
-    s_LoggerTime.start();
+    if (fileLoggingEnabled) {
+        // Serialize log messages on a single thread
+        s_LoggerThread.setMaxThreadCount(1);
+        s_LoggerTime.start();
 
-    // Register our logger with all libraries
+        // Register our logger with all libraries
 #if SDL_VERSION_ATLEAST(3, 0, 0)
-    SDL_SetLogOutputFunction(sdlLogToDiskHandler, nullptr);
+        SDL_SetLogOutputFunction(sdlLogToDiskHandler, nullptr);
 #else
-    SDL_LogOutputFunction oldSdlLogFn;
-    void* oldSdlLogUserdata;
-    SDL_LogGetOutputFunction(&oldSdlLogFn, &oldSdlLogUserdata);
-    SDL_LogSetOutputFunction(sdlLogToDiskHandler, nullptr);
+        SDL_LogGetOutputFunction(&oldSdlLogFn, &oldSdlLogUserdata);
+        SDL_LogSetOutputFunction(sdlLogToDiskHandler, nullptr);
 #endif
-    qInstallMessageHandler(qtLogToDiskHandler);
+        qInstallMessageHandler(qtLogToDiskHandler);
 #ifdef HAVE_FFMPEG
-    av_log_set_callback(ffmpegLogToDiskHandler);
+        av_log_set_callback(ffmpegLogToDiskHandler);
 #endif
+        loggingHandlersInstalled = true;
+    }
 
 #ifdef Q_OS_WIN32
     // Create a crash dump when we crash on Windows
@@ -501,10 +510,12 @@ int main(int argc, char *argv[])
 
 #ifdef LOG_TO_FILE
     // Prune the oldest existing logs if there are more than 10
-    QStringList existingLogNames = tempDir.entryList(QStringList("Moonlight-*.log"), QDir::NoFilter, QDir::SortFlag::Time);
-    for (int i = 10; i < existingLogNames.size(); i++) {
-        qInfo() << "Removing old log file:" << existingLogNames.at(i);
-        QFile(tempDir.filePath(existingLogNames.at(i))).remove();
+    if (fileLoggingEnabled) {
+        QStringList existingLogNames = tempDir.entryList(QStringList("Moonlight-*.log"), QDir::NoFilter, QDir::SortFlag::Time);
+        for (int i = 10; i < existingLogNames.size(); i++) {
+            qInfo() << "Removing old log file:" << existingLogNames.at(i);
+            QFile(tempDir.filePath(existingLogNames.at(i))).remove();
+        }
     }
 #endif
 
@@ -1057,15 +1068,17 @@ int main(int argc, char *argv[])
     QThreadPool::globalInstance()->waitForDone(30000);
 
     // Restore the default logger for all libraries before shutting down ours
+    if (loggingHandlersInstalled) {
 #if SDL_VERSION_ATLEAST(3, 0, 0)
-    SDL_SetLogOutputFunction(SDL_GetDefaultLogOutputFunction(), nullptr);
+        SDL_SetLogOutputFunction(SDL_GetDefaultLogOutputFunction(), nullptr);
 #else
-    SDL_LogSetOutputFunction(oldSdlLogFn, oldSdlLogUserdata);
+        SDL_LogSetOutputFunction(oldSdlLogFn, oldSdlLogUserdata);
 #endif
-    qInstallMessageHandler(nullptr);
+        qInstallMessageHandler(nullptr);
 #ifdef HAVE_FFMPEG
-    av_log_set_callback(av_log_default_callback);
+        av_log_set_callback(av_log_default_callback);
 #endif
+    }
 
     // We should not be in async logging mode anymore
     Q_ASSERT(g_AsyncLoggingEnabled == 0);
