@@ -15,7 +15,7 @@ typedef BOOL (WINAPI *SkipPointerFrameMessagesFn)(UINT32 pointerId);
 constexpr float PINCH_DISTANCE_THRESHOLD = 0.025f;
 constexpr float SCROLL_CENTER_THRESHOLD = 0.020f;
 constexpr Uint32 PINCH_WHEEL_SUPPRESS_MS = 250;
-constexpr Uint32 PINCH_CONTACT_GRACE_MS = 180;
+constexpr Uint32 TOUCHPAD_GESTURE_LOCKOUT_MS = 160;
 
 RegisterTouchpadCapableWindowFn pRegisterTouchpadCapableWindow = nullptr;
 SkipPointerFrameMessagesFn pSkipPointerFrameMessages = nullptr;
@@ -194,13 +194,11 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     const bool twoFingersPresent = framePresent[0] && framePresent[1];
     const bool twoFingersTracked = m_TouchpadHavePosition[0] && m_TouchpadHavePosition[1];
     const Uint32 now = SDL_GetTicks();
-    const bool holdNativePinch = m_TouchpadNativeGestureActive &&
-            m_TouchpadLastTwoFingerTime != 0 &&
-            static_cast<Sint32>(now - m_TouchpadLastTwoFingerTime) <= static_cast<Sint32>(PINCH_CONTACT_GRACE_MS);
+    const bool nativeGestureWasActive = m_TouchpadNativeGestureActive;
+    const bool gestureLockedOut = m_TouchpadGestureLockoutUntil != 0 &&
+            static_cast<Sint32>(m_TouchpadGestureLockoutUntil - now) > 0;
 
     if (twoFingersPresent) {
-        m_TouchpadLastTwoFingerTime = now;
-
         const float centerX = (frameX[0] + frameX[1]) * 0.5f;
         const float centerY = (frameY[0] + frameY[1]) * 0.5f;
         const float distanceX = frameX[0] - frameX[1];
@@ -215,7 +213,7 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
             m_TouchpadGestureStartCenterY = centerY;
             m_TouchpadGestureStartDistance = distance;
         }
-        else if (!m_TouchpadNativeGestureActive && !m_TouchpadScrollGestureActive) {
+        else if (!gestureLockedOut && !m_TouchpadNativeGestureActive && !m_TouchpadScrollGestureActive) {
             const float centerDeltaX = centerX - m_TouchpadGestureStartCenterX;
             const float centerDeltaY = centerY - m_TouchpadGestureStartCenterY;
             const float centerDelta = std::sqrt(centerDeltaX * centerDeltaX + centerDeltaY * centerDeltaY);
@@ -244,28 +242,16 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
         }
     }
     else if (m_TouchpadGestureTracking) {
-        if (holdNativePinch) {
-            for (int slot = 0; slot < MAX_FINGERS; slot++) {
-                if (!framePresent[slot] && m_TouchpadHavePosition[slot]) {
-                    framePresent[slot] = true;
-                    frameX[slot] = m_TouchpadX[slot];
-                    frameY[slot] = m_TouchpadY[slot];
-                }
-            }
+        if (m_TouchpadNativeGestureActive) {
             m_TouchpadSuppressWheelUntil = now + PINCH_WHEEL_SUPPRESS_MS;
+            m_TouchpadGestureLockoutUntil = now + TOUCHPAD_GESTURE_LOCKOUT_MS;
         }
-        else {
-            if (m_TouchpadNativeGestureActive) {
-                m_TouchpadSuppressWheelUntil = now + PINCH_WHEEL_SUPPRESS_MS;
-            }
-            m_TouchpadGestureTracking = false;
-            m_TouchpadNativeGestureActive = false;
-            m_TouchpadScrollGestureActive = false;
-            m_TouchpadLastTwoFingerTime = 0;
-        }
+        m_TouchpadGestureTracking = false;
+        m_TouchpadNativeGestureActive = false;
+        m_TouchpadScrollGestureActive = false;
     }
 
-    if (m_TouchpadNativeGestureActive) {
+    if (m_TouchpadNativeGestureActive || nativeGestureWasActive) {
         for (int slot = 0; slot < MAX_FINGERS; slot++) {
             if (!framePresent[slot] && !m_TouchpadContactDown[slot]) {
                 continue;
@@ -357,5 +343,5 @@ void SdlInputHandler::cancelNativeTouchpadContacts()
     m_TouchpadGestureTracking = false;
     m_TouchpadNativeGestureActive = false;
     m_TouchpadScrollGestureActive = false;
-    m_TouchpadLastTwoFingerTime = 0;
+    m_TouchpadGestureLockoutUntil = 0;
 }
