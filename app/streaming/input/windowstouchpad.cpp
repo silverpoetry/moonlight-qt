@@ -5,8 +5,6 @@
 #include <SDL_syswm.h>
 
 #ifdef Q_OS_WIN32
-#include "streaming/streamutils.h"
-
 #include <windows.h>
 
 namespace {
@@ -134,39 +132,39 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
         return true;
     }
 
-    int windowWidth, windowHeight;
-    SDL_GetWindowSize(m_Window, &windowWidth, &windowHeight);
-
-    SDL_Rect src, dst;
-    src.x = src.y = 0;
-    src.w = m_StreamWidth;
-    src.h = m_StreamHeight;
-
-    dst.x = dst.y = 0;
-    dst.w = windowWidth;
-    dst.h = windowHeight;
-    StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
-
     bool present[MAX_FINGERS] = {};
     for (UINT32 i = 0; i < pointerCount; i++) {
-        const POINTER_INFO& contact = contacts[i];
-        const UINT32 contactId = contact.pointerId;
+        const POINTER_INFO& pointerInfo = contacts[i];
+        const UINT32 contactId = pointerInfo.pointerId;
         const int slot = static_cast<int>(contactId % MAX_FINGERS);
 
         if (slot < 0 || slot >= MAX_FINGERS) {
             continue;
         }
 
-        present[slot] = (contact.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
+        present[slot] = (pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
         if (!present[slot] && !m_TouchpadContactDown[slot]) {
             continue;
         }
 
+        RECT deviceRect;
+        RECT displayRect;
+        if (!GetPointerDeviceRects(pointerInfo.sourceDevice, &deviceRect, &displayRect) ||
+                deviceRect.right == deviceRect.left ||
+                deviceRect.bottom == deviceRect.top) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "GetPointerDeviceRects failed for PT_TOUCHPAD: %lu",
+                        GetLastError());
+            continue;
+        }
+
         const float x = qBound(0.0f,
-                               static_cast<float>(contact.ptPixelLocation.x - dst.x) / dst.w,
+                               static_cast<float>(pointerInfo.ptHimetricLocation.x - deviceRect.left) /
+                                    static_cast<float>(deviceRect.right - deviceRect.left),
                                1.0f);
         const float y = qBound(0.0f,
-                               static_cast<float>(contact.ptPixelLocation.y - dst.y) / dst.h,
+                               static_cast<float>(pointerInfo.ptHimetricLocation.y - deviceRect.top) /
+                                    static_cast<float>(deviceRect.bottom - deviceRect.top),
                                1.0f);
 
         uint8_t eventType;
@@ -184,9 +182,16 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
         m_TouchpadContactDown[slot] = present[slot];
 
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Native touchpad contact event=%u slot=%d x=%.4f y=%.4f raw=(%ld,%ld) frameContacts=%u",
-                    eventType, slot, x, y,
-                    contact.ptPixelLocation.x, contact.ptPixelLocation.y,
+                    "Native touchpad contact event=%u slot=%d id=%u flags=0x%08lx x=%.4f y=%.4f pixel=(%ld,%ld) pixelRaw=(%ld,%ld) himetric=(%ld,%ld) himetricRaw=(%ld,%ld) device=(%ld,%ld,%ld,%ld) display=(%ld,%ld,%ld,%ld) frameContacts=%u",
+                    eventType, slot, contactId,
+                    static_cast<unsigned long>(pointerInfo.pointerFlags),
+                    x, y,
+                    pointerInfo.ptPixelLocation.x, pointerInfo.ptPixelLocation.y,
+                    pointerInfo.ptPixelLocationRaw.x, pointerInfo.ptPixelLocationRaw.y,
+                    pointerInfo.ptHimetricLocation.x, pointerInfo.ptHimetricLocation.y,
+                    pointerInfo.ptHimetricLocationRaw.x, pointerInfo.ptHimetricLocationRaw.y,
+                    deviceRect.left, deviceRect.top, deviceRect.right, deviceRect.bottom,
+                    displayRect.left, displayRect.top, displayRect.right, displayRect.bottom,
                     pointerCount);
     }
 
