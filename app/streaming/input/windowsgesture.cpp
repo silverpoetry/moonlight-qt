@@ -11,7 +11,7 @@
 #include <windows.h>
 
 namespace {
-constexpr short kCtrlKey = 0xA2; // VK_LCONTROL
+constexpr int kCtrlKey = 0xA2; // VK_LCONTROL
 constexpr float kWheelDeltaPerZoomRatio = 720.0f;
 }
 #endif
