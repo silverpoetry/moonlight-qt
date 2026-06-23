@@ -199,8 +199,6 @@ private:
 
     void performSpecialKeyCombo(KeyCombo combo);
 
-    void releasePinchZoomModifier();
-
     void cancelNativeTouchpadContacts();
 
     static
@@ -263,10 +261,6 @@ private:
     SDL_TimerID m_DragTimer;
     char m_DragButton;
     int m_NumFingersDown;
-    bool m_PinchZoomActive;
-    bool m_PinchZoomSentModifier;
-    unsigned long long m_LastPinchZoomArgument;
-    float m_PinchWheelRemainder;
     bool m_TouchpadWindowRegistered;
     bool m_TouchpadContactDown[MAX_FINGERS];
     bool m_TouchpadHavePosition[MAX_FINGERS];
@@ -280,6 +274,9 @@ private:
     float m_TouchpadGestureStartDistance;
     Uint32 m_TouchpadSuppressWheelUntil;
     bool m_TouchpadLoggedSuppressedWheel;
+    Uint32 m_TouchpadSuppressCtrlWheelUntil;
+    bool m_TouchpadLoggedSuppressedCtrlWheel;
+    bool m_TouchpadSuppressNextCtrlWheel;
     uint32_t m_TouchpadLastFrameId;
 
     static const int k_ButtonMap[];

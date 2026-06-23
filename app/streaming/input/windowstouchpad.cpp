@@ -15,6 +15,7 @@ typedef BOOL (WINAPI *SkipPointerFrameMessagesFn)(UINT32 pointerId);
 constexpr float PINCH_DISTANCE_THRESHOLD = 0.025f;
 constexpr float SCROLL_CENTER_THRESHOLD = 0.020f;
 constexpr Uint32 PINCH_WHEEL_SUPPRESS_MS = 250;
+constexpr Uint32 TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS = 250;
 
 RegisterTouchpadCapableWindowFn pRegisterTouchpadCapableWindow = nullptr;
 SkipPointerFrameMessagesFn pSkipPointerFrameMessages = nullptr;
@@ -91,6 +92,15 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     }
 
     const UINT message = msg->msg.win.msg;
+    if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) {
+        if ((LOWORD(msg->msg.win.wParam) & MK_CONTROL) &&
+                m_TouchpadSuppressCtrlWheelUntil != 0 &&
+                static_cast<Sint32>(m_TouchpadSuppressCtrlWheelUntil - SDL_GetTicks()) > 0) {
+            m_TouchpadSuppressNextCtrlWheel = true;
+        }
+        return false;
+    }
+
     if (message != WM_POINTERDOWN &&
             message != WM_POINTERUPDATE &&
             message != WM_POINTERUP &&
@@ -194,6 +204,8 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     const bool twoFingersTracked = m_TouchpadHavePosition[0] && m_TouchpadHavePosition[1];
     const Uint32 now = SDL_GetTicks();
     const bool nativeGestureWasActive = m_TouchpadNativeGestureActive;
+    m_TouchpadSuppressCtrlWheelUntil = now + TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS;
+    m_TouchpadLoggedSuppressedCtrlWheel = false;
 
     if (twoFingersPresent) {
         const float centerX = (frameX[0] + frameX[1]) * 0.5f;
@@ -240,8 +252,13 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     }
     else if (m_TouchpadGestureTracking) {
         if (m_TouchpadNativeGestureActive) {
-            m_TouchpadSuppressWheelUntil = 0;
-            m_TouchpadLoggedSuppressedWheel = false;
+            cancelNativeTouchpadContacts();
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "Ended native touchpad pinch and cleared gesture state");
+            if (pSkipPointerFrameMessages != nullptr) {
+                pSkipPointerFrameMessages(pointerId);
+            }
+            return true;
         }
         m_TouchpadGestureTracking = false;
         m_TouchpadNativeGestureActive = false;
@@ -309,14 +326,6 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
 #endif
 }
 
-void SdlInputHandler::releasePinchZoomModifier()
-{
-    m_PinchZoomActive = false;
-    m_PinchZoomSentModifier = false;
-    m_LastPinchZoomArgument = 0;
-    m_PinchWheelRemainder = 0.0f;
-}
-
 void SdlInputHandler::cancelNativeTouchpadContacts()
 {
     bool hadContact = false;
@@ -342,4 +351,6 @@ void SdlInputHandler::cancelNativeTouchpadContacts()
     m_TouchpadScrollGestureActive = false;
     m_TouchpadSuppressWheelUntil = 0;
     m_TouchpadLoggedSuppressedWheel = false;
+    m_TouchpadLastFrameId = 0;
+    m_TouchpadSuppressNextCtrlWheel = false;
 }

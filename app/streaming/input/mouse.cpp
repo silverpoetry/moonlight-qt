@@ -180,6 +180,31 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         m_TouchpadLoggedSuppressedWheel = false;
     }
 
+    if (m_TouchpadSuppressNextCtrlWheel) {
+        m_TouchpadSuppressNextCtrlWheel = false;
+        if (!m_TouchpadLoggedSuppressedCtrlWheel) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "Suppressing touchpad Ctrl+wheel fallback");
+            m_TouchpadLoggedSuppressedCtrlWheel = true;
+        }
+        return;
+    }
+
+    if ((SDL_GetModState() & KMOD_CTRL) && m_TouchpadSuppressCtrlWheelUntil != 0) {
+        const Sint32 remainingMs = static_cast<Sint32>(m_TouchpadSuppressCtrlWheelUntil - SDL_GetTicks());
+        if (remainingMs > 0) {
+            if (!m_TouchpadLoggedSuppressedCtrlWheel) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "Suppressing touchpad Ctrl+wheel fallback");
+                m_TouchpadLoggedSuppressedCtrlWheel = true;
+            }
+            return;
+        }
+
+        m_TouchpadSuppressCtrlWheelUntil = 0;
+        m_TouchpadLoggedSuppressedCtrlWheel = false;
+    }
+
     if (m_AbsoluteMouseMode) {
         int mouseX, mouseY;
         SDL_GetMouseState(&mouseX, &mouseY);

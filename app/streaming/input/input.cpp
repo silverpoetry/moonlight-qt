@@ -34,10 +34,6 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_DragTimer(0),
       m_DragButton(0),
       m_NumFingersDown(0),
-      m_PinchZoomActive(false),
-      m_PinchZoomSentModifier(false),
-      m_LastPinchZoomArgument(0),
-      m_PinchWheelRemainder(0.0f),
       m_TouchpadWindowRegistered(false),
       m_TouchpadGestureTracking(false),
       m_TouchpadNativeGestureActive(false),
@@ -47,6 +43,9 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_TouchpadGestureStartDistance(0.0f),
       m_TouchpadSuppressWheelUntil(0),
       m_TouchpadLoggedSuppressedWheel(false),
+      m_TouchpadSuppressCtrlWheelUntil(0),
+      m_TouchpadLoggedSuppressedCtrlWheel(false),
+      m_TouchpadSuppressNextCtrlWheel(false),
       m_TouchpadLastFrameId(0)
 {
     // System keys are always captured when running without a DE
@@ -242,7 +241,6 @@ SdlInputHandler::~SdlInputHandler()
     SDL_RemoveTimer(m_LeftButtonReleaseTimer);
     SDL_RemoveTimer(m_RightButtonReleaseTimer);
     SDL_RemoveTimer(m_DragTimer);
-    releasePinchZoomModifier();
     cancelNativeTouchpadContacts();
 
 #if !SDL_VERSION_ATLEAST(2, 0, 9)
@@ -280,7 +278,6 @@ void SdlInputHandler::setWindow(SDL_Window *window)
 
 void SdlInputHandler::raiseAllKeys()
 {
-    releasePinchZoomModifier();
     cancelNativeTouchpadContacts();
 
     if (m_KeysDown.isEmpty()) {
