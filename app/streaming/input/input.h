@@ -141,6 +141,8 @@ public:
 
     void registerTouchpadWindow();
 
+    void registerTouchpadGlobalGestures();
+
     int getAttachedGamepadMask();
 
     void raiseAllKeys();

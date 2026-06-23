@@ -50,7 +50,8 @@ win32 {
     }
 
     INCLUDEPATH += $$PWD/../libs/windows/include
-    LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib gdi32.lib user32.lib d3d9.lib dwmapi.lib dbghelp.lib
+    INCLUDEPATH += $$PWD/../.deps/cppwinrt-sdkcpp-28000
+    LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib oleaut32.lib runtimeobject.lib gdi32.lib user32.lib d3d9.lib dwmapi.lib dbghelp.lib
 }
 macx:!disable-prebuilts {
     !exists($$PWD/../libs/mac) {
@@ -191,6 +192,7 @@ SOURCES += \
     streaming/input/keyboard.cpp \
     streaming/input/mouse.cpp \
     streaming/input/reltouch.cpp \
+    streaming/input/windowstouchpadglobal.cpp \
     streaming/input/windowstouchpad.cpp \
     streaming/session.cpp \
     streaming/audio/audio.cpp \

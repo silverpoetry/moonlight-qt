@@ -274,6 +274,7 @@ void SdlInputHandler::setWindow(SDL_Window *window)
 {
     m_Window = window;
     registerTouchpadWindow();
+    registerTouchpadGlobalGestures();
 }
 
 void SdlInputHandler::raiseAllKeys()
