@@ -23,6 +23,7 @@ using namespace Windows::UI::Input;
 
 constexpr float THREE_FINGER_INITIAL_THRESHOLD = 35.0f;
 constexpr float THREE_FINGER_NAV_STEP_THRESHOLD = 45.0f;
+constexpr float THREE_FINGER_NAV_VERTICAL_STEP_THRESHOLD = 90.0f;
 constexpr float THREE_FINGER_ACTION_THRESHOLD = 70.0f;
 constexpr float THREE_FINGER_AXIS_DOMINANCE = 1.35f;
 constexpr short REMOTE_VK_TAB = 0x09;
@@ -329,7 +330,7 @@ private:
         }
 
         const int stepX = static_cast<int>(x / THREE_FINGER_NAV_STEP_THRESHOLD);
-        const int stepY = static_cast<int>(y / THREE_FINGER_NAV_STEP_THRESHOLD);
+        const int stepY = static_cast<int>(y / THREE_FINGER_NAV_VERTICAL_STEP_THRESHOLD);
         const int deltaX = stepX - m_LastNavStepX;
         const int deltaY = stepY - m_LastNavStepY;
 
