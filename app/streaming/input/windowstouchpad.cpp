@@ -15,7 +15,7 @@ typedef BOOL (WINAPI *SkipPointerFrameMessagesFn)(UINT32 pointerId);
 constexpr float PINCH_DISTANCE_THRESHOLD = 0.025f;
 constexpr float SCROLL_CENTER_THRESHOLD = 0.020f;
 constexpr Uint32 PINCH_WHEEL_SUPPRESS_MS = 250;
-constexpr Uint32 TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS = 250;
+constexpr Uint32 TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS = 80;
 
 RegisterTouchpadCapableWindowFn pRegisterTouchpadCapableWindow = nullptr;
 SkipPointerFrameMessagesFn pSkipPointerFrameMessages = nullptr;
@@ -222,8 +222,6 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     const bool twoFingersTracked = m_TouchpadHavePosition[0] && m_TouchpadHavePosition[1];
     const Uint32 now = SDL_GetTicks();
     const bool nativeGestureWasActive = m_TouchpadNativeGestureActive;
-    m_TouchpadSuppressCtrlWheelUntil = now + TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS;
-    m_TouchpadLoggedSuppressedCtrlWheel = false;
 
     if (twoFingersPresent) {
         const float centerX = (frameX[0] + frameX[1]) * 0.5f;
@@ -250,7 +248,9 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
                     distanceDelta > centerDelta * 1.35f) {
                 m_TouchpadNativeGestureActive = true;
                 m_TouchpadSuppressWheelUntil = now + PINCH_WHEEL_SUPPRESS_MS;
+                m_TouchpadSuppressCtrlWheelUntil = now + TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS;
                 m_TouchpadLoggedSuppressedWheel = false;
+                m_TouchpadLoggedSuppressedCtrlWheel = false;
                 SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                             "Native touchpad pinch selected distanceDelta=%.4f centerDelta=%.4f",
                             distanceDelta, centerDelta);
@@ -266,10 +266,13 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
 
         if (m_TouchpadNativeGestureActive) {
             m_TouchpadSuppressWheelUntil = now + PINCH_WHEEL_SUPPRESS_MS;
+            m_TouchpadSuppressCtrlWheelUntil = now + TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS;
         }
     }
     else if (m_TouchpadGestureTracking) {
         if (m_TouchpadNativeGestureActive) {
+            m_TouchpadSuppressCtrlWheelUntil = now + TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS;
+            m_TouchpadLoggedSuppressedCtrlWheel = false;
             cancelNativeTouchpadContacts();
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                         "Ended native touchpad pinch and cleared gesture state");
