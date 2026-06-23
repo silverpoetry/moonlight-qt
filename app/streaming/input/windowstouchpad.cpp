@@ -154,6 +154,24 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
         return true;
     }
 
+    bool hasNewContact = false;
+    for (UINT32 i = 0; i < pointerCount; i++) {
+        const POINTER_INFO& pointerInfo = contacts[i];
+        if ((pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) &&
+                (message == WM_POINTERDOWN || (pointerInfo.pointerFlags & POINTER_FLAG_NEW))) {
+            hasNewContact = true;
+            break;
+        }
+    }
+
+    if (hasNewContact &&
+            (m_TouchpadGestureTracking || m_TouchpadNativeGestureActive || m_TouchpadScrollGestureActive)) {
+        cancelNativeTouchpadContacts();
+        m_TouchpadLastFrameId = contacts[0].frameId;
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Reset stale native touchpad gesture on new contact");
+    }
+
     bool framePresent[MAX_FINGERS] = {};
     float frameX[MAX_FINGERS] = {};
     float frameY[MAX_FINGERS] = {};
