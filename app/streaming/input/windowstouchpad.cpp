@@ -15,7 +15,6 @@ typedef BOOL (WINAPI *SkipPointerFrameMessagesFn)(UINT32 pointerId);
 constexpr float PINCH_DISTANCE_THRESHOLD = 0.025f;
 constexpr float SCROLL_CENTER_THRESHOLD = 0.020f;
 constexpr Uint32 PINCH_WHEEL_SUPPRESS_MS = 250;
-constexpr Uint32 TOUCHPAD_GESTURE_LOCKOUT_MS = 160;
 
 RegisterTouchpadCapableWindowFn pRegisterTouchpadCapableWindow = nullptr;
 SkipPointerFrameMessagesFn pSkipPointerFrameMessages = nullptr;
@@ -195,8 +194,6 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     const bool twoFingersTracked = m_TouchpadHavePosition[0] && m_TouchpadHavePosition[1];
     const Uint32 now = SDL_GetTicks();
     const bool nativeGestureWasActive = m_TouchpadNativeGestureActive;
-    const bool gestureLockedOut = m_TouchpadGestureLockoutUntil != 0 &&
-            static_cast<Sint32>(m_TouchpadGestureLockoutUntil - now) > 0;
 
     if (twoFingersPresent) {
         const float centerX = (frameX[0] + frameX[1]) * 0.5f;
@@ -213,7 +210,7 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
             m_TouchpadGestureStartCenterY = centerY;
             m_TouchpadGestureStartDistance = distance;
         }
-        else if (!gestureLockedOut && !m_TouchpadNativeGestureActive && !m_TouchpadScrollGestureActive) {
+        else if (!m_TouchpadNativeGestureActive && !m_TouchpadScrollGestureActive) {
             const float centerDeltaX = centerX - m_TouchpadGestureStartCenterX;
             const float centerDeltaY = centerY - m_TouchpadGestureStartCenterY;
             const float centerDelta = std::sqrt(centerDeltaX * centerDeltaX + centerDeltaY * centerDeltaY);
@@ -243,8 +240,8 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     }
     else if (m_TouchpadGestureTracking) {
         if (m_TouchpadNativeGestureActive) {
-            m_TouchpadSuppressWheelUntil = now + PINCH_WHEEL_SUPPRESS_MS;
-            m_TouchpadGestureLockoutUntil = now + TOUCHPAD_GESTURE_LOCKOUT_MS;
+            m_TouchpadSuppressWheelUntil = 0;
+            m_TouchpadLoggedSuppressedWheel = false;
         }
         m_TouchpadGestureTracking = false;
         m_TouchpadNativeGestureActive = false;
@@ -343,5 +340,6 @@ void SdlInputHandler::cancelNativeTouchpadContacts()
     m_TouchpadGestureTracking = false;
     m_TouchpadNativeGestureActive = false;
     m_TouchpadScrollGestureActive = false;
-    m_TouchpadGestureLockoutUntil = 0;
+    m_TouchpadSuppressWheelUntil = 0;
+    m_TouchpadLoggedSuppressedWheel = false;
 }

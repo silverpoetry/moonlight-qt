@@ -47,8 +47,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_TouchpadGestureStartDistance(0.0f),
       m_TouchpadSuppressWheelUntil(0),
       m_TouchpadLoggedSuppressedWheel(false),
-      m_TouchpadLastFrameId(0),
-      m_TouchpadGestureLockoutUntil(0)
+      m_TouchpadLastFrameId(0)
 {
     // System keys are always captured when running without a DE
     if (!WMUtils::isRunningDesktopEnvironment()) {

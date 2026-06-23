@@ -281,7 +281,6 @@ private:
     Uint32 m_TouchpadSuppressWheelUntil;
     bool m_TouchpadLoggedSuppressedWheel;
     uint32_t m_TouchpadLastFrameId;
-    Uint32 m_TouchpadGestureLockoutUntil;
 
     static const int k_ButtonMap[];
 };
