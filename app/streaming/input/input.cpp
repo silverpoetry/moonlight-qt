@@ -37,7 +37,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_PinchZoomActive(false),
       m_PinchZoomSentModifier(false),
       m_LastPinchZoomArgument(0),
-      m_PinchWheelRemainder(0.0f)
+      m_PinchWheelRemainder(0.0f),
+      m_TouchpadWindowRegistered(false)
 {
     // System keys are always captured when running without a DE
     if (!WMUtils::isRunningDesktopEnvironment()) {
@@ -205,6 +206,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     SDL_zero(m_LastTouchDownEvent);
     SDL_zero(m_LastTouchUpEvent);
     SDL_zero(m_TouchDownEvent);
+    SDL_zero(m_TouchpadContactDown);
 }
 
 SdlInputHandler::~SdlInputHandler()
@@ -229,6 +231,7 @@ SdlInputHandler::~SdlInputHandler()
     SDL_RemoveTimer(m_RightButtonReleaseTimer);
     SDL_RemoveTimer(m_DragTimer);
     releasePinchZoomModifier();
+    cancelNativeTouchpadContacts();
 
 #if !SDL_VERSION_ATLEAST(2, 0, 9)
     SDL_QuitSubSystem(SDL_INIT_HAPTIC);
@@ -260,11 +263,13 @@ SdlInputHandler::~SdlInputHandler()
 void SdlInputHandler::setWindow(SDL_Window *window)
 {
     m_Window = window;
+    registerTouchpadWindow();
 }
 
 void SdlInputHandler::raiseAllKeys()
 {
     releasePinchZoomModifier();
+    cancelNativeTouchpadContacts();
 
     if (m_KeysDown.isEmpty()) {
         return;

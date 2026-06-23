@@ -5,7 +5,7 @@
 
 #ifdef Q_OS_WIN32
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0602
+#define _WIN32_WINNT 0x0603
 #endif
 #endif
 
@@ -139,6 +139,8 @@ public:
 
     bool handleSystemWindowEvent(SDL_SysWMmsg* msg);
 
+    void registerTouchpadWindow();
+
     int getAttachedGamepadMask();
 
     void raiseAllKeys();
@@ -198,6 +200,8 @@ private:
     void performSpecialKeyCombo(KeyCombo combo);
 
     void releasePinchZoomModifier();
+
+    void cancelNativeTouchpadContacts();
 
     static
     Uint32 longPressTimerCallback(Uint32 interval, void* param);
@@ -263,6 +267,8 @@ private:
     bool m_PinchZoomSentModifier;
     unsigned long long m_LastPinchZoomArgument;
     float m_PinchWheelRemainder;
+    bool m_TouchpadWindowRegistered;
+    bool m_TouchpadContactDown[MAX_FINGERS];
 
     static const int k_ButtonMap[];
 };

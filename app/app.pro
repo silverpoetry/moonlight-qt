@@ -191,7 +191,7 @@ SOURCES += \
     streaming/input/keyboard.cpp \
     streaming/input/mouse.cpp \
     streaming/input/reltouch.cpp \
-    streaming/input/windowsgesture.cpp \
+    streaming/input/windowstouchpad.cpp \
     streaming/session.cpp \
     streaming/audio/audio.cpp \
     streaming/audio/renderers/sdlaud.cpp \
