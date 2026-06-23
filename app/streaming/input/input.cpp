@@ -46,7 +46,11 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_TouchpadSuppressCtrlWheelUntil(0),
       m_TouchpadLoggedSuppressedCtrlWheel(false),
       m_TouchpadSuppressNextCtrlWheel(false),
-      m_TouchpadLastFrameId(0)
+      m_TouchpadSuppressedCtrlDown{false, false},
+      m_TouchpadLastFrameId(0),
+      m_LocalClosePassthroughUntil(0),
+      m_WindowsMessageHookHwnd(nullptr),
+      m_WindowsMessageHookPrevWndProc(nullptr)
 {
     // System keys are always captured when running without a DE
     if (!WMUtils::isRunningDesktopEnvironment()) {
@@ -222,6 +226,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
 
 SdlInputHandler::~SdlInputHandler()
 {
+    restoreWindowsMessageHook();
+
     for (int i = 0; i < MAX_GAMEPADS; i++) {
         if (m_GamepadState[i].mouseEmulationTimer != 0) {
             Session::get()->notifyMouseEmulationMode(false);
@@ -357,8 +363,9 @@ void SdlInputHandler::updateKeyboardGrabState()
         }
     }
 
-    // Don't close the window on Alt+F4 when keyboard grab is enabled
-    SDL_SetHint(SDL_HINT_WINDOWS_NO_CLOSE_ON_ALT_F4, shouldGrab ? "1" : "0");
+    // During active streaming, local Alt+F4-like gestures should pass through
+    // to the host rather than closing the Moonlight window.
+    SDL_SetHint(SDL_HINT_WINDOWS_NO_CLOSE_ON_ALT_F4, isCaptureActive() ? "1" : "0");
 
 #if SDL_VERSION_ATLEAST(2, 0, 15)
     // On SDL 2.0.15+, we can get keyboard-only grab on Win32, X11, and Wayland.

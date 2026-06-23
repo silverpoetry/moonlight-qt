@@ -11,6 +11,7 @@
 
 #include "SDL_compat.h"
 #include <SDL_syswm.h>
+#include <cstdint>
 
 struct GamepadState {
     SDL_GameController* controller;
@@ -139,6 +140,12 @@ public:
 
     bool handleSystemWindowEvent(SDL_SysWMmsg* msg);
 
+    bool consumeLocalClosePassthroughQuit();
+
+    bool handleNativeWindowCloseMessage(unsigned int message, uintptr_t wParam);
+
+    bool handleNativeTouchpadWheelMessage(unsigned int message, uintptr_t wParam);
+
     void registerTouchpadWindow();
 
     void registerTouchpadGlobalGestures();
@@ -202,6 +209,14 @@ private:
     void performSpecialKeyCombo(KeyCombo combo);
 
     void cancelNativeTouchpadContacts();
+
+    bool isTouchpadCtrlFallbackActive() const;
+
+    void forwardLocalCloseToRemote(const char* source);
+
+    void installWindowsMessageHook(void* hwnd);
+
+    void restoreWindowsMessageHook();
 
     static
     Uint32 longPressTimerCallback(Uint32 interval, void* param);
@@ -279,7 +294,11 @@ private:
     Uint32 m_TouchpadSuppressCtrlWheelUntil;
     bool m_TouchpadLoggedSuppressedCtrlWheel;
     bool m_TouchpadSuppressNextCtrlWheel;
+    bool m_TouchpadSuppressedCtrlDown[2];
     uint32_t m_TouchpadLastFrameId;
+    Uint32 m_LocalClosePassthroughUntil;
+    void* m_WindowsMessageHookHwnd;
+    void* m_WindowsMessageHookPrevWndProc;
 
     static const int k_ButtonMap[];
 };

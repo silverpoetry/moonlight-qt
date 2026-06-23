@@ -169,8 +169,8 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         const Sint32 remainingMs = static_cast<Sint32>(m_TouchpadSuppressWheelUntil - SDL_GetTicks());
         if (remainingMs > 0) {
             if (!m_TouchpadLoggedSuppressedWheel) {
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                            "Suppressing SDL wheel during native touchpad pinch gesture");
+                SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                             "Suppressing SDL wheel during native touchpad pinch gesture");
                 m_TouchpadLoggedSuppressedWheel = true;
             }
             return;
@@ -182,20 +182,27 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 
     if (m_TouchpadSuppressNextCtrlWheel) {
         m_TouchpadSuppressNextCtrlWheel = false;
-        if (!m_TouchpadLoggedSuppressedCtrlWheel) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "Suppressing touchpad Ctrl+wheel fallback");
-            m_TouchpadLoggedSuppressedCtrlWheel = true;
+        if (m_TouchpadSuppressCtrlWheelUntil != 0) {
+            const Sint32 remainingMs = static_cast<Sint32>(m_TouchpadSuppressCtrlWheelUntil - SDL_GetTicks());
+            if (remainingMs > 0) {
+                if (!m_TouchpadLoggedSuppressedCtrlWheel) {
+                    SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                                 "Suppressing touchpad Ctrl+wheel fallback");
+                    m_TouchpadLoggedSuppressedCtrlWheel = true;
+                }
+                return;
+            }
         }
-        return;
     }
 
-    if ((SDL_GetModState() & KMOD_CTRL) && m_TouchpadSuppressCtrlWheelUntil != 0) {
+    if (isTouchpadCtrlFallbackActive() &&
+            (SDL_GetModState() & KMOD_CTRL) &&
+            m_TouchpadSuppressCtrlWheelUntil != 0) {
         const Sint32 remainingMs = static_cast<Sint32>(m_TouchpadSuppressCtrlWheelUntil - SDL_GetTicks());
         if (remainingMs > 0) {
             if (!m_TouchpadLoggedSuppressedCtrlWheel) {
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                            "Suppressing touchpad Ctrl+wheel fallback");
+                SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                             "Suppressing touchpad Ctrl+wheel fallback");
                 m_TouchpadLoggedSuppressedCtrlWheel = true;
             }
             return;

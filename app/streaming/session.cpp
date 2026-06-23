@@ -2298,8 +2298,13 @@ void Session::exec()
 #endif
         switch (event.type) {
         case SDL_QUIT:
+            if (m_InputHandler != nullptr && m_InputHandler->consumeLocalClosePassthroughQuit()) {
+                break;
+            }
+
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "Quit event received");
+                        "Quit event received (captureActive=%s)",
+                        m_InputHandler != nullptr && m_InputHandler->isCaptureActive() ? "yes" : "no");
             goto DispatchDeferredCleanup;
 
         case SDL_SYSWMEVENT:
@@ -2373,6 +2378,11 @@ void Session::exec()
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();
+                break;
+            case SDL_WINDOWEVENT_CLOSE:
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "SDL window close event received (captureActive=%s)",
+                            m_InputHandler != nullptr && m_InputHandler->isCaptureActive() ? "yes" : "no");
                 break;
             }
 
