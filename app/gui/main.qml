@@ -189,6 +189,27 @@ ApplicationWindow {
     // to allow the user to work with Moonlight on a second display
     // while dealing with configuration issues. This will ensure
     // machines come online even if the input focus isn't on Moonlight.
+    function pausePollingForStream() {
+        inactivityTimer.stop()
+
+        if (pollingActive) {
+            ComputerManager.stopPollingAsync()
+            pollingActive = false
+            return true
+        }
+
+        return false
+    }
+
+    function resumePollingAfterStream() {
+        inactivityTimer.stop()
+
+        if (visible && active && !pollingActive) {
+            ComputerManager.startPolling()
+            pollingActive = true
+        }
+    }
+
     Timer {
         id: inactivityTimer
         interval: 5 * 60000

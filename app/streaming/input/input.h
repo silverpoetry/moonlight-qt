@@ -296,6 +296,11 @@ private:
     bool m_TouchpadSuppressNextCtrlWheel;
     bool m_TouchpadSuppressedCtrlDown[2];
     uint32_t m_TouchpadLastFrameId;
+    void* m_TouchpadCachedDevice;
+    int m_TouchpadCachedDeviceLeft;
+    int m_TouchpadCachedDeviceTop;
+    int m_TouchpadCachedDeviceWidth;
+    int m_TouchpadCachedDeviceHeight;
     Uint32 m_LocalClosePassthroughUntil;
     void* m_WindowsMessageHookHwnd;
     void* m_WindowsMessageHookPrevWndProc;

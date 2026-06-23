@@ -457,8 +457,8 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
             (m_TouchpadGestureTracking || m_TouchpadNativeGestureActive || m_TouchpadScrollGestureActive)) {
         cancelNativeTouchpadContacts();
         m_TouchpadLastFrameId = contacts[0].frameId;
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Reset stale native touchpad gesture on new contact");
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                     "Reset stale native touchpad gesture on new contact");
     }
 
     bool framePresent[MAX_FINGERS] = {};
@@ -481,25 +481,35 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
         }
         frameSeen[slot] = true;
 
-        RECT deviceRect;
-        RECT displayRect;
-        if (!GetPointerDeviceRects(pointerInfo.sourceDevice, &deviceRect, &displayRect) ||
-                deviceRect.right == deviceRect.left ||
-                deviceRect.bottom == deviceRect.top) {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                        "GetPointerDeviceRects failed for PT_TOUCHPAD: %lu",
-                        GetLastError());
-            continue;
+        if (m_TouchpadCachedDevice != pointerInfo.sourceDevice ||
+                m_TouchpadCachedDeviceWidth == 0 ||
+                m_TouchpadCachedDeviceHeight == 0) {
+            RECT deviceRect;
+            RECT displayRect;
+            if (!GetPointerDeviceRects(pointerInfo.sourceDevice, &deviceRect, &displayRect) ||
+                    deviceRect.right == deviceRect.left ||
+                    deviceRect.bottom == deviceRect.top) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "GetPointerDeviceRects failed for PT_TOUCHPAD: %lu",
+                            GetLastError());
+                continue;
+            }
+
+            m_TouchpadCachedDevice = pointerInfo.sourceDevice;
+            m_TouchpadCachedDeviceLeft = deviceRect.left;
+            m_TouchpadCachedDeviceTop = deviceRect.top;
+            m_TouchpadCachedDeviceWidth = deviceRect.right - deviceRect.left;
+            m_TouchpadCachedDeviceHeight = deviceRect.bottom - deviceRect.top;
         }
 
         framePresent[slot] = (pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
         frameX[slot] = qBound(0.0f,
-                              static_cast<float>(pointerInfo.ptHimetricLocation.x - deviceRect.left) /
-                                   static_cast<float>(deviceRect.right - deviceRect.left),
+                              static_cast<float>(pointerInfo.ptHimetricLocation.x - m_TouchpadCachedDeviceLeft) /
+                                   static_cast<float>(m_TouchpadCachedDeviceWidth),
                               1.0f);
         frameY[slot] = qBound(0.0f,
-                              static_cast<float>(pointerInfo.ptHimetricLocation.y - deviceRect.top) /
-                                   static_cast<float>(deviceRect.bottom - deviceRect.top),
+                              static_cast<float>(pointerInfo.ptHimetricLocation.y - m_TouchpadCachedDeviceTop) /
+                                   static_cast<float>(m_TouchpadCachedDeviceHeight),
                               1.0f);
         if (!framePresent[slot] && m_TouchpadHavePosition[slot]) {
             frameX[slot] = m_TouchpadX[slot];

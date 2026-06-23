@@ -150,8 +150,8 @@ private:
 
         sendKey(REMOTE_VK_LMENU, true, MODIFIER_ALT);
         m_AltTabActive = true;
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Started remote Alt+Tab gesture");
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                     "Started remote Alt+Tab gesture");
     }
 
     void sendAltTabStep(bool reverse)
@@ -162,13 +162,13 @@ private:
             sendKey(REMOTE_VK_LSHIFT, true, MODIFIER_ALT | MODIFIER_SHIFT);
             sendKeyTap(REMOTE_VK_TAB, MODIFIER_ALT | MODIFIER_SHIFT);
             sendKey(REMOTE_VK_LSHIFT, false, MODIFIER_ALT);
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "Mapped 3-finger swipe step to remote Alt+Shift+Tab");
+            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                         "Mapped 3-finger swipe step to remote Alt+Shift+Tab");
         }
         else {
             sendKeyTap(REMOTE_VK_TAB, MODIFIER_ALT);
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "Mapped 3-finger swipe step to remote Alt+Tab");
+            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                         "Mapped 3-finger swipe step to remote Alt+Tab");
         }
     }
 
@@ -179,9 +179,9 @@ private:
         }
 
         sendKeyTap(keyCode, MODIFIER_ALT);
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Mapped 3-finger Alt+Tab navigation to remote %s",
-                    directionName);
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                     "Mapped 3-finger Alt+Tab navigation to remote %s",
+                     directionName);
     }
 
     void finishAltTabGesture()
@@ -192,8 +192,8 @@ private:
 
         sendKey(REMOTE_VK_LMENU, false, 0);
         m_AltTabActive = false;
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Finished remote Alt+Tab gesture");
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                     "Finished remote Alt+Tab gesture");
     }
 
     void sendShowDesktop()
@@ -201,8 +201,8 @@ private:
         sendKey(REMOTE_VK_LWIN, true, MODIFIER_META);
         sendKeyTap(REMOTE_VK_D, MODIFIER_META);
         sendKey(REMOTE_VK_LWIN, false, 0);
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Mapped 3-finger vertical swipe to remote Win+D");
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                     "Mapped 3-finger vertical swipe to remote Win+D");
     }
 
     void resetGestureState()
@@ -232,9 +232,9 @@ private:
             break;
         }
 
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Windows global touchpad action: %s",
-                    touchpadGlobalActionName(args.Action()));
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                     "Windows global touchpad action: %s",
+                     touchpadGlobalActionName(args.Action()));
     }
 
     void onPointerPressed(TouchpadGesturesController const&,
@@ -288,9 +288,9 @@ private:
         m_GestureMode = GestureMode::Unknown;
         m_LastNavStepX = 0;
         m_LastNavStepY = 0;
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Windows global touchpad manipulation started contacts=%d",
-                    std::max(3, m_MaxContactCount));
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                     "Windows global touchpad manipulation started contacts=%d",
+                     std::max(3, m_MaxContactCount));
     }
 
     void onManipulationUpdated(PhysicalGestureRecognizer const&,
@@ -367,9 +367,9 @@ private:
         const bool horizontal = absX > absY * THREE_FINGER_AXIS_DOMINANCE;
         const bool vertical = absY > absX * THREE_FINGER_AXIS_DOMINANCE;
 
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Windows global touchpad manipulation completed totalX=%.1f totalY=%.1f mode=%d",
-                    x, y, static_cast<int>(m_GestureMode));
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                     "Windows global touchpad manipulation completed totalX=%.1f totalY=%.1f mode=%d",
+                     x, y, static_cast<int>(m_GestureMode));
 
         if (m_GestureMode == GestureMode::AltTab) {
             finishAltTabGesture();

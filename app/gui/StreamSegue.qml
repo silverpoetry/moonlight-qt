@@ -17,6 +17,7 @@ Item {
     property bool quitAfter : false
     property bool reconnecting : false
     property bool sessionStarted : false
+    property bool pausedPollingForStream : false
 
     function stageStarting(stage)
     {
@@ -110,6 +111,7 @@ Item {
         else {
             // Show the Qt window again after streaming
             window.visible = true
+            resumePollingIfPaused()
 
             // Display any launch errors. We do this after
             // the Qt UI is visible again to prevent losing
@@ -119,6 +121,21 @@ Item {
                 streamSegueErrorDialog.quitAfter = quitAfter
                 streamSegueErrorDialog.open()
             }
+        }
+    }
+
+    function pausePollingForStream()
+    {
+        if (!pausedPollingForStream && typeof window.pausePollingForStream === "function") {
+            pausedPollingForStream = window.pausePollingForStream()
+        }
+    }
+
+    function resumePollingIfPaused()
+    {
+        if (pausedPollingForStream && typeof window.resumePollingAfterStream === "function") {
+            pausedPollingForStream = false
+            window.resumePollingAfterStream()
         }
     }
 
@@ -145,6 +162,7 @@ Item {
 
     function startStreamingSession()
     {
+        pausePollingForStream()
         spinnerTimer.start()
         streamLoader.active = true
     }
@@ -159,6 +177,7 @@ Item {
 
         // Re-enable GUI gamepad usage now
         SdlGamepadKeyNavigation.enable()
+        resumePollingIfPaused()
     }
 
     StackView.onActivated: {
