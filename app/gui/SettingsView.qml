@@ -1751,6 +1751,22 @@ Flickable {
                                   qsTr("You can toggle it at any time while streaming using Ctrl+Alt+Shift+S or Select+L1+R1+X.") + "\n\n" +
                                   qsTr("The performance overlay is not supported on Steam Link or Raspberry Pi.")
                 }
+
+                CheckBox {
+                    id: enableFileLogging
+                    width: parent.width
+                    text: qsTr("Enable file logging")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.enableFileLogging
+                    onCheckedChanged: {
+                        StreamingPreferences.enableFileLogging = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Create Moonlight log files for troubleshooting. Leave this off during normal use to avoid extra disk writes.")
+                }
             }
         }
     }
