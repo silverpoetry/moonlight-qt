@@ -8,6 +8,11 @@
 #include "renderers/sdl.h"
 
 #include <Limelight.h>
+#include <QHash>
+
+namespace {
+QHash<int, bool> s_AudioConfigurationSupportCache;
+}
 
 #define TRY_INIT_RENDERER(renderer, opusConfig)        \
 {                                                      \
@@ -112,6 +117,11 @@ int Session::getAudioRendererCapabilities(int audioConfiguration)
 
 bool Session::testAudio(int audioConfiguration)
 {
+    auto it = s_AudioConfigurationSupportCache.constFind(audioConfiguration);
+    if (it != s_AudioConfigurationSupportCache.cend()) {
+        return it.value();
+    }
+
     // Build a fake OPUS_MULTISTREAM_CONFIGURATION to give
     // the renderer the channel count and sample rate.
     OPUS_MULTISTREAM_CONFIGURATION opusConfig = {};
@@ -121,10 +131,12 @@ bool Session::testAudio(int audioConfiguration)
 
     IAudioRenderer* audioRenderer = createAudioRenderer(&opusConfig);
     if (audioRenderer == nullptr) {
+        s_AudioConfigurationSupportCache.insert(audioConfiguration, false);
         return false;
     }
 
     delete audioRenderer;
+    s_AudioConfigurationSupportCache.insert(audioConfiguration, true);
 
     return true;
 }

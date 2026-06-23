@@ -12,6 +12,8 @@ import SdlGamepadKeyNavigation 1.0
 
 ApplicationWindow {
     property bool pollingActive: false
+    property bool systemChecksStarted: false
+    property double lastStreamDeactivationTime: 0
 
     // Set by SettingsView to force the back operation to pop all
     // pages except the initial view. This is required when doing
@@ -32,6 +34,10 @@ ApplicationWindow {
         }
 
         SdlGamepadKeyNavigation.enable()
+
+        if (runConfigChecks) {
+            deferredSystemChecksTimer.start()
+        }
     }
 
     Component.onCompleted: {
@@ -56,10 +62,34 @@ ApplicationWindow {
                 wow64Dialog.open()
             }
 
-            // Hardware acceleration and unmapped gamepads are checked asynchronously
-            SystemProperties.hasHardwareAccelerationChanged.connect(hasHardwareAccelerationChanged)
-            SystemProperties.unmappedGamepadsChanged.connect(hasUnmappedGamepadsChanged)
-            SystemProperties.startAsyncLoad()
+            deferredSystemChecksTimer.start()
+        }
+    }
+
+    function deferSystemChecksAfterStream() {
+        lastStreamDeactivationTime = Date.now()
+        if (deferredSystemChecksTimer.running) {
+            deferredSystemChecksTimer.restart()
+        }
+    }
+
+    Timer {
+        id: deferredSystemChecksTimer
+        interval: 5000
+        repeat: false
+        onTriggered: {
+            if (runConfigChecks && !systemChecksStarted && stackView.currentItem) {
+                if (stackView.currentItem.objectName === "streamSegue" ||
+                        Date.now() - lastStreamDeactivationTime < 10000) {
+                    deferredSystemChecksTimer.restart()
+                    return
+                }
+
+                SystemProperties.hasHardwareAccelerationChanged.connect(hasHardwareAccelerationChanged)
+                SystemProperties.unmappedGamepadsChanged.connect(hasUnmappedGamepadsChanged)
+                SystemProperties.startAsyncLoad()
+                systemChecksStarted = true
+            }
         }
     }
 

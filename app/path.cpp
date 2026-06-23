@@ -102,16 +102,20 @@ QString Path::getDataFilePath(QString fileName)
     return QString(candidatePath);
 }
 
-void Path::initialize(bool portable)
+void Path::initialize(bool portable, QString portableDir)
 {
     if (portable) {
-        s_LogDir = QDir::currentPath();
-        s_BoxArtCacheDir = QDir::currentPath() + "/boxart";
-        s_QmlCacheDir = QDir::currentPath() + "/qmlcache";
+        if (portableDir.isEmpty()) {
+            portableDir = QCoreApplication::applicationDirPath();
+        }
+
+        s_LogDir = portableDir;
+        s_BoxArtCacheDir = portableDir + "/boxart";
+        s_QmlCacheDir = portableDir + "/qmlcache";
 
         // In order for the If-Modified-Since logic to work in MappingFetcher,
         // the cache directory must be different than the current directory.
-        s_CacheDir = QDir::currentPath() + "/cache";
+        s_CacheDir = portableDir + "/cache";
     }
     else {
 #ifdef Q_OS_DARWIN

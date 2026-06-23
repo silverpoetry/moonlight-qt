@@ -1189,8 +1189,17 @@ bool FFmpegVideoDecoder::tryInitializeRenderer(const AVCodec* decoder,
 
         // Initialize the backend renderer for testing
         if (initializeRendererInternal(m_BackendRenderer, &testFrameDecoderParams)) {
+            TestMode testMode = (m_TestOnly || separateTestDecoder) ?
+                        TestMode::TestFrameOnly :
+                        (params->skipTestFrame ? TestMode::NoTesting : TestMode::TestFrame);
+
+            if (params->skipTestFrame && !m_TestOnly && !separateTestDecoder) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "Skipping decoder test frame after successful prevalidation");
+            }
+
             if (completeInitialization(decoder, requiredFormat, &testFrameDecoderParams,
-                                       (m_TestOnly || separateTestDecoder) ? TestMode::TestFrameOnly : TestMode::TestFrame,
+                                       testMode,
                                         i == 0 /* EGL/DRM */)) {
                 if (m_TestOnly) {
                     // This decoder is only for testing capabilities, so don't bother

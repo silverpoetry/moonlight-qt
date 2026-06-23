@@ -104,12 +104,24 @@ public:
     Q_INVOKABLE bool initialize(QQuickWindow* qtWindow);
     Q_INVOKABLE void start();
     Q_INVOKABLE void interrupt();
+    Q_INVOKABLE bool shouldAutoReconnect() const;
+    Q_INVOKABLE Session* createReconnectSession();
     Q_PROPERTY(QStringList launchWarnings MEMBER m_LaunchWarnings NOTIFY launchWarningsChanged);
 
     static
     void getDecoderInfo(SDL_Window* window,
                         bool& isHardwareAccelerated, bool& isFullScreenOnly,
                         bool& isHdrSupported, QSize& maxResolution);
+
+    static
+    void prewarmDecoderCache(SDL_Window* window,
+                             StreamingPreferences::VideoDecoderSelection vds,
+                             StreamingPreferences::VideoCodecConfig vcc,
+                             bool enableHdr,
+                             bool enableYUV444,
+                             int width,
+                             int height,
+                             int frameRate);
 
     static Session* get()
     {
@@ -171,6 +183,8 @@ private:
 
     void updateOptimalWindowDisplayMode();
 
+    void triggerAutoReconnect(const char* reason);
+
     enum class DecoderAvailability {
         None,
         Software,
@@ -181,6 +195,24 @@ private:
     DecoderAvailability getDecoderAvailability(SDL_Window* window,
                                                StreamingPreferences::VideoDecoderSelection vds,
                                                int videoFormat, int width, int height, int frameRate);
+
+    static
+    DecoderAvailability getCachedDecoderAvailability(SDL_Window* window,
+                                                     StreamingPreferences::VideoDecoderSelection vds,
+                                                     int videoFormat, int width, int height, int frameRate);
+
+    static
+    bool getCachedDecoderProperties(SDL_Window* window,
+                                    StreamingPreferences::VideoDecoderSelection vds,
+                                    int videoFormat,
+                                    int width,
+                                    int height,
+                                    int frameRate,
+                                    int& capabilities,
+                                    int& colorSpace,
+                                    int& colorRange,
+                                    bool& alwaysFullScreen,
+                                    bool& hardwareAccelerated);
 
     static
     bool chooseDecoder(StreamingPreferences::VideoDecoderSelection vds,
@@ -263,6 +295,8 @@ private:
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
     bool m_ShouldExit;
+    bool m_AutoReconnectPending;
+    bool m_SuppressTerminationErrors;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;
@@ -271,6 +305,11 @@ private:
     int m_ActiveVideoWidth;
     int m_ActiveVideoHeight;
     int m_ActiveVideoFrameRate;
+    int m_PrevalidatedDecoderSelection;
+    int m_PrevalidatedVideoFormat;
+    int m_PrevalidatedVideoWidth;
+    int m_PrevalidatedVideoHeight;
+    int m_PrevalidatedVideoFrameRate;
 
     OpusMSDecoder* m_OpusDecoder;
     IAudioRenderer* m_AudioRenderer;

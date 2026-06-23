@@ -7,12 +7,16 @@ import Session 1.0
 import SystemProperties 1.0
 
 Item {
+    objectName: "streamSegue"
+
     property Session session
     property string appName
     property string stageText : isResume ? qsTr("Resuming %1...").arg(appName) :
                                            qsTr("Starting %1...").arg(appName)
     property bool isResume : false
     property bool quitAfter : false
+    property bool reconnecting : false
+    property bool sessionStarted : false
 
     function stageStarting(stage)
     {
@@ -32,6 +36,9 @@ Item {
 
     function connectionStarted()
     {
+        sessionStarted = true
+        reconnecting = false
+
         // Hide the UI contents so the user doesn't
         // see them briefly when we pop off the StackView
         stageSpinner.visible = false
@@ -44,6 +51,11 @@ Item {
 
     function displayLaunchError(text)
     {
+        if (reconnecting) {
+            console.error(text)
+            reconnecting = false
+        }
+
         // Display the error dialog after Session::exec() returns
         streamSegueErrorDialog.text = text
         console.error(text)
@@ -61,6 +73,24 @@ Item {
 
     function sessionFinished(portTestResult)
     {
+        if (session && session.shouldAutoReconnect()) {
+            reconnecting = true
+            sessionStarted = false
+            stageText = qsTr("Resuming %1...").arg(appName)
+            streamSegueErrorDialog.text = ""
+            window.visible = true
+            toolBar.visible = false
+            stageSpinner.visible = true
+            stageLabel.visible = true
+            hintText.visible = true
+
+            session = session.createReconnectSession()
+            sessionReadyForDeletion()
+            connectSessionSignals()
+            startStreamingSession()
+            return
+        }
+
         if (portTestResult !== 0 && portTestResult !== -1 && streamSegueErrorDialog.text) {
             streamSegueErrorDialog.text += "\n\n" + qsTr("This PC's Internet connection is blocking Moonlight. Streaming over the Internet may not work while connected to this network.")
         }
@@ -96,11 +126,34 @@ Item {
     {
         // Garbage collect the Session object since it's pretty heavyweight
         // and keeps other libraries (like SDL_TTF) around until it is deleted.
-        session = null
+        if (!reconnecting) {
+            session = null
+        }
         gc()
     }
 
+    function connectSessionSignals()
+    {
+        session.stageStarting.connect(stageStarting)
+        session.stageFailed.connect(stageFailed)
+        session.connectionStarted.connect(connectionStarted)
+        session.displayLaunchError.connect(displayLaunchError)
+        session.quitStarting.connect(quitStarting)
+        session.sessionFinished.connect(sessionFinished)
+        session.readyForDeletion.connect(sessionReadyForDeletion)
+    }
+
+    function startStreamingSession()
+    {
+        spinnerTimer.start()
+        streamLoader.active = true
+    }
+
     StackView.onDeactivating: {
+        if (typeof window.deferSystemChecksAfterStream === "function") {
+            window.deferSystemChecksAfterStream()
+        }
+
         // Show the toolbar again when popped off the stack
         toolBar.visible = true
 
@@ -113,21 +166,14 @@ Item {
         toolBar.visible = false
 
         // Hook up our signals
-        session.stageStarting.connect(stageStarting)
-        session.stageFailed.connect(stageFailed)
-        session.connectionStarted.connect(connectionStarted)
-        session.displayLaunchError.connect(displayLaunchError)
-        session.quitStarting.connect(quitStarting)
-        session.sessionFinished.connect(sessionFinished)
-        session.readyForDeletion.connect(sessionReadyForDeletion)
+        connectSessionSignals()
 
         // Ensure the SystemProperties async thread is finished,
         // since it may currently be using the SDL video subsystem
         SystemProperties.waitForAsyncLoad()
 
         // Kick off the stream
-        spinnerTimer.start()
-        streamLoader.active = true
+        startStreamingSession()
     }
 
     Timer {
@@ -161,6 +207,8 @@ Item {
         asynchronous: true
 
         onLoaded: {
+            streamLoader.active = false
+
             // Set the hint text. We do this here rather than
             // in the hintText control itself to synchronize
             // with Session.exec() which requires no concurrent
@@ -178,7 +226,7 @@ Item {
                 return;
             }
 
-            // Don't wait unless we have toasts to display
+            // Display launch warnings without blocking the connection startup.
             startSessionTimer.interval = 0
 
             // Display the toasts together in a vertical centered arrangement
@@ -197,11 +245,9 @@ Item {
                 // Offset the next toast below the previous one
                 yOffset = toast.y + toast.padding + toast.height
 
-                // Allow an extra 500 ms for the tooltip's fade-out animation to finish
-                startSessionTimer.interval = toast.timeout + 500;
             }
 
-            // Start the timer to wait for toasts (or start the session immediately)
+            // Start the session immediately, even if warning toasts are visible.
             startSessionTimer.start()
         }
 

@@ -1,5 +1,8 @@
-# Support debug and release builds from command line for CI
-CONFIG += debug_and_release
+# Support debug and release builds from command line for CI unless the caller
+# explicitly requests a single configuration build.
+!contains(CONFIG, debug):!contains(CONFIG, release) {
+    CONFIG += debug_and_release
+}
 
 # Ensure symbols are always generated
 CONFIG += force_debug_info

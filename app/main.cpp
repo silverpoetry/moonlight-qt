@@ -13,6 +13,7 @@
 #include <QElapsedTimer>
 #include <QTemporaryFile>
 #include <QRegularExpression>
+#include <QFileInfo>
 
 #ifdef Q_OS_UNIX
 #include <sys/socket.h>
@@ -432,13 +433,16 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationDomain("moonlight-stream.com");
     QCoreApplication::setApplicationName("Moonlight");
 
-    if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
+    QString applicationDir = QFileInfo(QString::fromLocal8Bit(argv[0])).absolutePath();
+    QString currentDir = QDir::currentPath();
+    if (QFile(QDir(applicationDir).absoluteFilePath("portable.dat")).exists() ||
+            QFile(QDir(currentDir).absoluteFilePath("portable.dat")).exists()) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
-        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QDir::currentPath());
-        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, QDir::currentPath());
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, currentDir);
+        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, currentDir);
 
         // Initialize paths for portable mode
-        Path::initialize(true);
+        Path::initialize(true, applicationDir);
     }
     else {
         // Initialize paths for standard installation
@@ -447,7 +451,7 @@ int main(int argc, char *argv[])
 
     // Override the default QML cache directory with the one we chose
     if (qEnvironmentVariableIsEmpty("QML_DISK_CACHE_PATH")) {
-        qputenv("QML_DISK_CACHE_PATH", Path::getQmlCacheDir().toUtf8());
+        qputenv("QML_DISK_CACHE_PATH", QFile::encodeName(Path::getQmlCacheDir()));
     }
 
 #ifdef Q_OS_WIN32

@@ -24,13 +24,6 @@ class NvComputer
     friend class ComputerManager;
     friend class PendingQuitTask;
 
-private:
-    void sortAppList();
-
-    bool updateAppList(QVector<NvApp> newAppList);
-
-    bool pendingQuit;
-
 public:
     NvComputer() = default;
 
@@ -65,6 +58,14 @@ public:
 
     QVector<NvAddress>
     uniqueAddresses() const;
+
+    QVector<NvAddress>
+    pollingAddresses() const;
+
+    static bool isWrongSubnetSiteLocalAddress(const NvAddress& address);
+
+    NvAddress
+    preferredAddress() const;
 
     void
     serialize(QSettings& settings, bool serializeApps) const;
@@ -119,5 +120,11 @@ public:
     mutable CopySafeReadWriteLock lock;
 
 private:
+    void sortAppList();
+
+    bool updateAppList(QVector<NvApp> newAppList);
+
+    bool pendingQuit;
+
     uint16_t externalPort;
 };

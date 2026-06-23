@@ -96,7 +96,7 @@ private:
             bool online = false;
             bool wasOnline = m_Computer->state == NvComputer::CS_ONLINE;
             for (int i = 0; i < (wasOnline ? TRIES_BEFORE_OFFLINING : 1) && !online; i++) {
-                for (auto& address : m_Computer->uniqueAddresses()) {
+                for (const auto& address : m_Computer->pollingAddresses()) {
                     if (isInterruptionRequested()) {
                         return;
                     }

@@ -516,6 +516,101 @@ QVector<NvAddress> NvComputer::uniqueAddresses() const
     return uniqueAddressList;
 }
 
+static void appendUniqueAddress(QVector<NvAddress>& addresses, const NvAddress& address)
+{
+    if (address.isNull()) {
+        return;
+    }
+
+    for (const NvAddress& existingAddress : std::as_const(addresses)) {
+        if (existingAddress == address) {
+            return;
+        }
+    }
+
+    addresses.append(address);
+}
+
+static bool isPotentiallyLocalIpv4Address(const QHostAddress& address)
+{
+    return address.isInSubnet(QHostAddress("10.0.0.0"), 8) ||
+           address.isInSubnet(QHostAddress("172.16.0.0"), 12) ||
+           address.isInSubnet(QHostAddress("192.168.0.0"), 16) ||
+           address.isInSubnet(QHostAddress("100.64.0.0"), 10) ||
+           address.isInSubnet(QHostAddress("169.254.0.0"), 16) ||
+           address.isInSubnet(QHostAddress("198.18.0.0"), 15);
+}
+
+bool NvComputer::isWrongSubnetSiteLocalAddress(const NvAddress& address)
+{
+    QHostAddress targetAddress(address.address());
+    if (targetAddress.protocol() != QAbstractSocket::IPv4Protocol ||
+            !isPotentiallyLocalIpv4Address(targetAddress)) {
+        return false;
+    }
+
+    const auto interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface& iface : interfaces) {
+        const auto addressEntries = iface.addressEntries();
+        for (const QNetworkAddressEntry& entry : addressEntries) {
+            const QHostAddress ifaceAddress = entry.ip();
+            if (ifaceAddress.protocol() != QAbstractSocket::IPv4Protocol) {
+                continue;
+            }
+
+            if (!isPotentiallyLocalIpv4Address(ifaceAddress)) {
+                continue;
+            }
+
+            if (entry.prefixLength() >= 0 &&
+                    targetAddress.isInSubnet(ifaceAddress, entry.prefixLength())) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+QVector<NvAddress> NvComputer::pollingAddresses() const
+{
+    QReadLocker readLocker(&lock);
+    QVector<NvAddress> orderedAddresses;
+
+    const bool preferExternalAddress =
+            !manualAddress.isNull() && isWrongSubnetSiteLocalAddress(localAddress);
+
+    if (preferExternalAddress) {
+        appendUniqueAddress(orderedAddresses, manualAddress);
+        appendUniqueAddress(orderedAddresses, remoteAddress);
+        appendUniqueAddress(orderedAddresses, ipv6Address);
+        appendUniqueAddress(orderedAddresses, localAddress);
+    }
+    else {
+        appendUniqueAddress(orderedAddresses, localAddress);
+        appendUniqueAddress(orderedAddresses, manualAddress);
+        appendUniqueAddress(orderedAddresses, remoteAddress);
+        appendUniqueAddress(orderedAddresses, ipv6Address);
+    }
+
+    if (orderedAddresses.isEmpty()) {
+        appendUniqueAddress(orderedAddresses, activeAddress);
+    }
+
+    return orderedAddresses;
+}
+
+NvAddress NvComputer::preferredAddress() const
+{
+    QReadLocker readLocker(&lock);
+
+    if (!manualAddress.isNull() && isWrongSubnetSiteLocalAddress(localAddress)) {
+        return manualAddress;
+    }
+
+    return activeAddress;
+}
+
 bool NvComputer::update(const NvComputer& that)
 {
     bool changed = false;

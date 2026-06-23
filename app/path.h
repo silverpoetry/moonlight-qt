@@ -18,7 +18,7 @@ public:
     // Only safe to use directly for Qt classes
     static QString getDataFilePath(QString fileName);
 
-    static void initialize(bool portable);
+    static void initialize(bool portable, QString portableDir = QString());
 
 private:
     static QString s_CacheDir;

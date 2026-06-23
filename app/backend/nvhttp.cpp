@@ -41,7 +41,7 @@ NvHTTP::NvHTTP(NvAddress address, uint16_t httpsPort, QSslCertificate serverCert
 }
 
 NvHTTP::NvHTTP(NvComputer* computer, QNetworkAccessManager* nam) :
-    NvHTTP(computer->activeAddress, computer->activeHttpsPort, computer->serverCert, !computer->isNvidiaServerSoftware, nam)
+    NvHTTP(computer->preferredAddress(), computer->activeHttpsPort, computer->serverCert, !computer->isNvidiaServerSoftware, nam)
 {
 }
 

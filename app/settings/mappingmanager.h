@@ -74,5 +74,6 @@ private:
     QMap<QString, SdlGamepadMapping> m_Mappings;
 
     static MappingFetcher* s_MappingFetcher;
+    static bool s_DatabaseMappingsApplied;
 };
 
