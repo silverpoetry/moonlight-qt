@@ -3,6 +3,8 @@
 #include "utils.h"
 #include "streaming/session.h"
 
+#include <QByteArray>
+
 #include <h264_stream.h>
 
 extern "C" {
@@ -58,6 +60,14 @@ extern "C" {
 #define MAX_SPS_EXTRA_SIZE 16
 
 #define FAILED_DECODES_RESET_THRESHOLD 20
+
+namespace {
+bool shouldUseVerboseFfmpegInitLogging()
+{
+    QByteArray value = qgetenv("ML_FFMPEG_DEBUG");
+    return !value.isEmpty() && value != "0" && value.toLower() != "false";
+}
+}
 
 bool FFmpegVideoDecoder::isHardwareAccelerated()
 {
@@ -1627,8 +1637,10 @@ bool FFmpegVideoDecoder::tryInitializeNonHwAccelDecoder(PDECODER_PARAMETERS para
 
 bool FFmpegVideoDecoder::initialize(PDECODER_PARAMETERS params)
 {
-    // Increase log level until the first frame is decoded
-    av_log_set_level(AV_LOG_DEBUG);
+    // FFmpeg DEBUG logs enumerate decoder internals and can generate hundreds
+    // of log lines during every stream start. Keep normal startup quiet unless
+    // explicit diagnostics are requested.
+    av_log_set_level(shouldUseVerboseFfmpegInitLogging() ? AV_LOG_DEBUG : AV_LOG_INFO);
 
     // First try decoders that the user has manually specified via environment variables.
     // These must output surfaces in one of the formats that one of our renderers supports,
