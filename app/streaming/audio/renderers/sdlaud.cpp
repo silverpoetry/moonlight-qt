@@ -6,18 +6,19 @@ SdlAudioRenderer::SdlAudioRenderer()
     : m_AudioDevice(0),
       m_AudioBuffer(nullptr)
 {
-    SDL_assert(!SDL_WasInit(SDL_INIT_AUDIO));
-
-    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+    if (!m_AudioSubsystem.isInitialized()) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                      "SDL_InitSubSystem(SDL_INIT_AUDIO) failed: %s",
                      SDL_GetError());
-        SDL_assert(SDL_WasInit(SDL_INIT_AUDIO));
     }
 }
 
 bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* opusConfig)
 {
+    if (!m_AudioSubsystem.isInitialized()) {
+        return false;
+    }
+
     SDL_AudioSpec want, have;
 
     SDL_zero(want);
@@ -37,7 +38,11 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
                   opusConfig->channelCount *
                   getAudioBufferSampleSize();
 
-    m_AudioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    {
+        SdlAudio::LockedSection lock;
+        m_AudioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    }
+
     if (m_AudioDevice == 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                      "Failed to open audio device: %s",
@@ -77,15 +82,16 @@ SdlAudioRenderer::~SdlAudioRenderer()
     if (m_AudioDevice != 0) {
         // Stop playback
         SDL_PauseAudioDevice(m_AudioDevice, 1);
-        SDL_CloseAudioDevice(m_AudioDevice);
+        {
+            SdlAudio::LockedSection lock;
+            SDL_CloseAudioDevice(m_AudioDevice);
+        }
     }
 
     if (m_AudioBuffer != nullptr) {
         SDL_free(m_AudioBuffer);
     }
 
-    SDL_QuitSubSystem(SDL_INIT_AUDIO);
-    SDL_assert(!SDL_WasInit(SDL_INIT_AUDIO));
 }
 
 void* SdlAudioRenderer::getAudioBuffer(int*)

@@ -2,6 +2,8 @@
 
 #include <QSemaphore>
 #include <QQuickWindow>
+#include <QElapsedTimer>
+#include <QMutex>
 
 #include <Limelight.h>
 #include <opus_multistream.h>
@@ -185,6 +187,8 @@ private:
 
     void triggerAutoReconnect(const char* reason);
 
+    void logStartupTiming(const char* stage);
+
     enum class DecoderAvailability {
         None,
         Software,
@@ -300,6 +304,9 @@ private:
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;
+    QElapsedTimer m_StartupTimer;
+    QMutex m_StartupTimingLock;
+    qint64 m_LastStartupTimingMs;
 
     int m_ActiveVideoFormat;
     int m_ActiveVideoWidth;

@@ -18,6 +18,22 @@ Item {
     property bool reconnecting : false
     property bool sessionStarted : false
     property bool pausedPollingForStream : false
+    property double startupLogStart : 0
+    property double startupLogLast : 0
+
+    function logStartupTiming(stage)
+    {
+        if (startupLogStart === 0) {
+            startupLogStart = Date.now()
+            startupLogLast = startupLogStart
+        }
+
+        var now = Date.now()
+        console.info("StartupTiming QML " + stage +
+                     " total=" + Math.round(now - startupLogStart) + "ms" +
+                     " delta=" + Math.round(now - startupLogLast) + "ms")
+        startupLogLast = now
+    }
 
     function stageStarting(stage)
     {
@@ -126,9 +142,11 @@ Item {
 
     function pausePollingForStream()
     {
+        logStartupTiming("pausePollingForStream begin")
         if (!pausedPollingForStream && typeof window.pausePollingForStream === "function") {
             pausedPollingForStream = window.pausePollingForStream()
         }
+        logStartupTiming(pausedPollingForStream ? "pausePollingForStream paused" : "pausePollingForStream no-op")
     }
 
     function resumePollingIfPaused()
@@ -162,9 +180,11 @@ Item {
 
     function startStreamingSession()
     {
+        logStartupTiming("startStreamingSession begin")
         pausePollingForStream()
         spinnerTimer.start()
         streamLoader.active = true
+        logStartupTiming("startStreamingSession loader activated")
     }
 
     StackView.onDeactivating: {
@@ -181,15 +201,23 @@ Item {
     }
 
     StackView.onActivated: {
+        startupLogStart = Date.now()
+        startupLogLast = startupLogStart
+        logStartupTiming("StackView.onActivated begin")
+
         // Hide the toolbar before we start loading
         toolBar.visible = false
+        logStartupTiming("toolbar hidden")
 
         // Hook up our signals
         connectSessionSignals()
+        logStartupTiming("session signals connected")
 
         // Ensure the SystemProperties async thread is finished,
         // since it may currently be using the SDL video subsystem
+        logStartupTiming("SystemProperties.waitForAsyncLoad begin")
         SystemProperties.waitForAsyncLoad()
+        logStartupTiming("SystemProperties.waitForAsyncLoad done")
 
         // Kick off the stream
         startStreamingSession()
@@ -204,19 +232,26 @@ Item {
         // middle of the animation on Windows, which looks very
         // obviously broken.
         interval: 100
-        onTriggered: stageSpinner.visible = true
+        onTriggered: {
+            logStartupTiming("spinner shown")
+            stageSpinner.visible = true
+        }
     }
 
     Timer {
         id: startSessionTimer
         onTriggered: {
+            logStartupTiming("startSessionTimer triggered")
+
             // Garbage collect QML stuff before we start streaming,
             // since we'll probably be streaming for a while and we
             // won't be able to GC during the stream.
             gc()
+            logStartupTiming("QML gc before session.start done")
 
             // Run the streaming session to completion
             session.start()
+            logStartupTiming("session.start returned")
         }
     }
 
@@ -226,7 +261,9 @@ Item {
         asynchronous: true
 
         onLoaded: {
+            logStartupTiming("streamLoader loaded")
             streamLoader.active = false
+            logStartupTiming("streamLoader deactivated")
 
             // Set the hint text. We do this here rather than
             // in the hintText control itself to synchronize
@@ -237,13 +274,17 @@ Item {
 
             // Stop GUI gamepad usage now
             SdlGamepadKeyNavigation.disable()
+            logStartupTiming("gamepad navigation disabled")
 
             // Initialize the session and probe for host/client capabilities
+            logStartupTiming("session.initialize begin")
             if (!session.initialize(window)) {
+                logStartupTiming("session.initialize failed")
                 sessionFinished(0);
                 sessionReadyForDeletion();
                 return;
             }
+            logStartupTiming("session.initialize done")
 
             // Display launch warnings without blocking the connection startup.
             startSessionTimer.interval = 0
@@ -268,6 +309,7 @@ Item {
 
             // Start the session immediately, even if warning toasts are visible.
             startSessionTimer.start()
+            logStartupTiming("startSessionTimer started")
         }
 
         sourceComponent: Item {}

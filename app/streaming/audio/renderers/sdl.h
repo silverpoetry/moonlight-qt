@@ -1,6 +1,7 @@
 #pragma once
 
 #include "renderer.h"
+#include "streaming/audio/sdlaudioutil.h"
 #include "SDL_compat.h"
 
 class SdlAudioRenderer : public IAudioRenderer
@@ -23,4 +24,5 @@ private:
     void* m_AudioBuffer;
     Uint32 m_FrameSize;
     Uint32 m_FrameDurationMs;
+    SdlAudio::SubsystemGuard m_AudioSubsystem;
 };
