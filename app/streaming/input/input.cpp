@@ -231,6 +231,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
 
 SdlInputHandler::~SdlInputHandler()
 {
+    updateTouchpadGlobalGesturesEnabled(false);
     restoreWindowsMessageHook();
 
     for (int i = 0; i < MAX_GAMEPADS; i++) {
@@ -340,10 +341,13 @@ void SdlInputHandler::notifyFocusLost()
     // Raise all keys that are currently pressed. If we don't do this, certain keys
     // used in shortcuts that cause focus loss (such as Alt+Tab) may get stuck down.
     raiseAllKeys();
+
+    updateTouchpadGlobalGesturesEnabled(false);
 }
 
 void SdlInputHandler::notifyFocusGained()
 {
+    updateTouchpadGlobalGesturesEnabled(isSystemKeyCaptureActive());
 }
 
 bool SdlInputHandler::isCaptureActive()
@@ -361,16 +365,18 @@ void SdlInputHandler::updateKeyboardGrabState()
     bool shouldGrab = m_CaptureSystemKeysMode != StreamingPreferences::CSK_OFF && isCaptureActive();
     if (shouldGrab) {
         Uint32 windowFlags = SDL_GetWindowFlags(m_Window);
+        const bool trueFullscreen =
+                (windowFlags & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN;
         if (m_CaptureSystemKeysMode == StreamingPreferences::CSK_FULLSCREEN &&
-            !(windowFlags & SDL_WINDOW_FULLSCREEN)) {
+                !trueFullscreen) {
             // Ungrab if it's fullscreen only and we left fullscreen
             shouldGrab = false;
         }
     }
 
-    // During active streaming, local Alt+F4-like gestures should pass through
-    // to the host rather than closing the Moonlight window.
-    SDL_SetHint(SDL_HINT_WINDOWS_NO_CLOSE_ON_ALT_F4, isCaptureActive() ? "1" : "0");
+    // During system shortcut capture, local Alt+F4-like gestures should pass
+    // through to the host rather than closing the Moonlight window.
+    SDL_SetHint(SDL_HINT_WINDOWS_NO_CLOSE_ON_ALT_F4, shouldGrab ? "1" : "0");
 
 #if SDL_VERSION_ATLEAST(2, 0, 15)
     // On SDL 2.0.15+, we can get keyboard-only grab on Win32, X11, and Wayland.
@@ -379,6 +385,7 @@ void SdlInputHandler::updateKeyboardGrabState()
 #endif
 
     m_KeyboardCaptureActive = shouldGrab;
+    updateTouchpadGlobalGesturesEnabled(shouldGrab);
 }
 
 bool SdlInputHandler::isSystemKeyCaptureActive()
@@ -400,8 +407,10 @@ bool SdlInputHandler::isSystemKeyCaptureActive()
         return false;
     }
 
+    const bool trueFullscreen =
+            (windowFlags & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN;
     if (m_CaptureSystemKeysMode == StreamingPreferences::CSK_FULLSCREEN &&
-            !(windowFlags & SDL_WINDOW_FULLSCREEN)) {
+            !trueFullscreen) {
         return false;
     }
 

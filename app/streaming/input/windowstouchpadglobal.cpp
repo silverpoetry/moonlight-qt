@@ -53,8 +53,10 @@ const char* touchpadGlobalActionName(TouchpadGlobalAction action)
 class GlobalTouchpadGestureState
 {
 public:
-    void initialize()
+    void initialize(SdlInputHandler* handler)
     {
+        m_Handler = handler;
+
         if (m_Initialized) {
             return;
         }
@@ -81,7 +83,7 @@ public:
             m_Controller.SupportedGestures(
                         TouchpadGlobalGestureKinds::ThreeFingerManipulations |
                         TouchpadGlobalGestureKinds::ThreeFingerActions);
-            m_Controller.Enabled(true);
+            m_Controller.Enabled(false);
 
             m_Recognizer = PhysicalGestureRecognizer();
             m_Recognizer.GestureSettings(
@@ -120,6 +122,44 @@ public:
         catch (...) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "Failed to register Windows global touchpad gestures");
+        }
+    }
+
+    void setEnabled(SdlInputHandler* handler, bool enabled)
+    {
+        if (enabled) {
+            initialize(handler);
+        }
+        else {
+            m_Handler = handler == m_Handler ? nullptr : m_Handler;
+        }
+
+        if (!m_Controller) {
+            resetGestureState();
+            m_Enabled = false;
+            return;
+        }
+
+        const bool active = enabled && m_Handler != nullptr;
+        if (m_Enabled == active) {
+            return;
+        }
+
+        if (!active) {
+            resetGestureState();
+        }
+
+        try {
+            m_Controller.Enabled(active);
+            m_Enabled = active;
+            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
+                         "Windows global touchpad gestures %s",
+                         active ? "enabled" : "disabled");
+        }
+        catch (hresult_error const& e) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "Failed to update Windows global touchpad gestures: 0x%08x",
+                        static_cast<unsigned int>(e.code()));
         }
     }
 
@@ -218,6 +258,10 @@ private:
     void onGlobalActionPerformed(TouchpadGesturesController const&,
                                  TouchpadGlobalActionEventArgs const& args)
     {
+        if (!shouldHandleGesture()) {
+            return;
+        }
+
         switch (args.Action()) {
         case TouchpadGlobalAction::ThreeFingerPressDown:
             m_ActiveContactCount = 3;
@@ -240,6 +284,10 @@ private:
     void onPointerPressed(TouchpadGesturesController const&,
                           PointerEventArgs const& args)
     {
+        if (!shouldHandleGesture()) {
+            return;
+        }
+
         try {
             m_ActiveContactCount++;
             m_MaxContactCount = std::max(m_MaxContactCount, m_ActiveContactCount);
@@ -255,6 +303,10 @@ private:
     void onPointerMoved(TouchpadGesturesController const&,
                         PointerEventArgs const& args)
     {
+        if (!shouldHandleGesture()) {
+            return;
+        }
+
         try {
             m_Recognizer.ProcessMoveEvents(args.GetIntermediatePoints());
         }
@@ -268,6 +320,10 @@ private:
     void onPointerReleased(TouchpadGesturesController const&,
                            PointerEventArgs const& args)
     {
+        if (!shouldHandleGesture()) {
+            return;
+        }
+
         try {
             m_Recognizer.ProcessUpEvent(args.CurrentPoint());
             m_ActiveContactCount = std::max(0, m_ActiveContactCount - 1);
@@ -285,6 +341,10 @@ private:
     void onManipulationStarted(PhysicalGestureRecognizer const&,
                                ManipulationStartedEventArgs const&)
     {
+        if (!shouldHandleGesture()) {
+            return;
+        }
+
         m_GestureMode = GestureMode::Unknown;
         m_LastNavStepX = 0;
         m_LastNavStepY = 0;
@@ -296,6 +356,10 @@ private:
     void onManipulationUpdated(PhysicalGestureRecognizer const&,
                                ManipulationUpdatedEventArgs const& args)
     {
+        if (!shouldHandleGesture()) {
+            return;
+        }
+
         const auto cumulative = args.Cumulative();
         const float x = cumulative.Translation.X;
         const float y = cumulative.Translation.Y;
@@ -359,6 +423,11 @@ private:
     void onManipulationCompleted(PhysicalGestureRecognizer const&,
                                  ManipulationCompletedEventArgs const& args)
     {
+        if (!shouldHandleGesture()) {
+            resetGestureState();
+            return;
+        }
+
         const auto cumulative = args.Cumulative();
         const float x = cumulative.Translation.X;
         const float y = cumulative.Translation.Y;
@@ -386,7 +455,19 @@ private:
         resetGestureState();
     }
 
+    bool shouldHandleGesture()
+    {
+        if (!m_Enabled || m_Handler == nullptr || !m_Handler->isSystemKeyCaptureActive()) {
+            resetGestureState();
+            return false;
+        }
+
+        return true;
+    }
+
     bool m_Initialized = false;
+    bool m_Enabled = false;
+    SdlInputHandler* m_Handler = nullptr;
     TouchpadGesturesController m_Controller{ nullptr };
     PhysicalGestureRecognizer m_Recognizer{ nullptr };
     event_token m_ActionToken{};
@@ -412,6 +493,15 @@ GlobalTouchpadGestureState s_GlobalTouchpadGestures;
 void SdlInputHandler::registerTouchpadGlobalGestures()
 {
 #ifdef Q_OS_WIN32
-    s_GlobalTouchpadGestures.initialize();
+    s_GlobalTouchpadGestures.initialize(this);
+#endif
+}
+
+void SdlInputHandler::updateTouchpadGlobalGesturesEnabled(bool enabled)
+{
+#ifdef Q_OS_WIN32
+    s_GlobalTouchpadGestures.setEnabled(this, enabled);
+#else
+    Q_UNUSED(enabled);
 #endif
 }

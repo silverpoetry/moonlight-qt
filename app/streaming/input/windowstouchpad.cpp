@@ -180,17 +180,17 @@ bool SdlInputHandler::handleNativeWindowCloseMessage(unsigned int message, uintp
               message == WM_NCRBUTTONDOWN ||
               message == WM_NCRBUTTONUP ||
               message == WM_NCRBUTTONDBLCLK) && wParam == HTCLOSE);
-    const bool captureActive = isCaptureActive();
+    const bool systemKeyCaptureActive = isSystemKeyCaptureActive();
 
     if (isCloseCandidate) {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Native close candidate msg=0x%04x wParam=0x%llx capture=%s",
+                    "Native close candidate msg=0x%04x wParam=0x%llx syskeyCapture=%s",
                     message,
                     static_cast<unsigned long long>(wParam),
-                    captureActive ? "yes" : "no");
+                    systemKeyCaptureActive ? "yes" : "no");
     }
 
-    if (!captureActive) {
+    if (!systemKeyCaptureActive) {
         return false;
     }
 
@@ -348,13 +348,13 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
                message == WM_NCRBUTTONDBLCLK) &&
               msg->msg.win.wParam == HTCLOSE))) {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "SDL syswm close candidate msg=0x%04x wParam=0x%llx capture=%s",
+                    "SDL syswm close candidate msg=0x%04x wParam=0x%llx syskeyCapture=%s",
                     message,
                     static_cast<unsigned long long>(msg->msg.win.wParam),
-                    isCaptureActive() ? "yes" : "no");
+                    isSystemKeyCaptureActive() ? "yes" : "no");
     }
 
-    if (isCaptureActive()) {
+    if (isSystemKeyCaptureActive()) {
         if (message == WM_CLOSE) {
             forwardLocalCloseToRemote("WM_CLOSE");
             return true;

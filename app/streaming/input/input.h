@@ -212,6 +212,8 @@ private:
 
     bool isTouchpadCtrlFallbackActive() const;
 
+    void updateTouchpadGlobalGesturesEnabled(bool enabled);
+
     void forwardLocalCloseToRemote(const char* source);
 
     void installWindowsMessageHook(void* hwnd);
