@@ -29,6 +29,7 @@
 #define SDL_CODE_GAMECONTROLLER_SET_MOTION_EVENT_STATE 103
 #define SDL_CODE_GAMECONTROLLER_SET_CONTROLLER_LED 104
 #define SDL_CODE_GAMECONTROLLER_SET_ADAPTIVE_TRIGGERS 105
+#define SDL_CODE_NATIVE_CURSOR_UPDATE 106
 
 #define AUTO_RECONNECT_SUSPEND_GAP_MS 5000
 
@@ -45,6 +46,7 @@
 #include <QScreen>
 #include <QHash>
 #include <QMutex>
+#include <QByteArray>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QQuickOpenGLUtils>
@@ -65,7 +67,8 @@ CONNECTION_LISTENER_CALLBACKS Session::k_ConnCallbacks = {
     Session::clRumbleTriggers,
     Session::clSetMotionEventState,
     Session::clSetControllerLED,
-    Session::clSetAdaptiveTriggers
+    Session::clSetAdaptiveTriggers,
+    Session::clNativeCursor
 };
 
 Session* Session::s_ActiveSession;
@@ -118,6 +121,21 @@ QHash<DecoderAvailabilityCacheKey, int> s_DecoderAvailabilityCache;
 QHash<DecoderAvailabilityCacheKey, DecoderPropertiesCacheValue> s_DecoderPropertiesCache;
 QMutex s_DecoderCacheLock;
 }
+
+struct Session::NativeCursorEvent
+{
+    bool visible;
+    bool shapeChanged;
+    quint8 format;
+    qint32 x;
+    qint32 y;
+    quint16 width;
+    quint16 height;
+    quint16 hotspotX;
+    quint16 hotspotY;
+    quint32 shapeId;
+    QByteArray imageData;
+};
 
 void Session::clStageStarting(int stage)
 {
@@ -333,6 +351,102 @@ void Session::clSetAdaptiveTriggers(uint16_t controllerNumber, uint8_t eventFlag
 
     setControllerLEDEvent.user.data2 = (void *) state;
     SDL_PushEvent(&setControllerLEDEvent);
+}
+
+void Session::clNativeCursor(PSS_NATIVE_CURSOR_UPDATE cursorUpdate)
+{
+    if (s_ActiveSession == nullptr || !s_ActiveSession->m_StreamConfig.enableNativeCursor) {
+        return;
+    }
+
+    NativeCursorEvent* nativeCursorEvent = new NativeCursorEvent();
+    nativeCursorEvent->visible = (cursorUpdate->flags & LI_NATIVE_CURSOR_FLAG_VISIBLE) != 0;
+    nativeCursorEvent->shapeChanged = (cursorUpdate->flags & LI_NATIVE_CURSOR_FLAG_SHAPE) != 0;
+    nativeCursorEvent->format = cursorUpdate->format;
+    nativeCursorEvent->x = cursorUpdate->x;
+    nativeCursorEvent->y = cursorUpdate->y;
+    nativeCursorEvent->width = cursorUpdate->width;
+    nativeCursorEvent->height = cursorUpdate->height;
+    nativeCursorEvent->hotspotX = cursorUpdate->hotspotX;
+    nativeCursorEvent->hotspotY = cursorUpdate->hotspotY;
+    nativeCursorEvent->shapeId = cursorUpdate->shapeId;
+
+    if (cursorUpdate->imageData != nullptr && cursorUpdate->imageSize > 0) {
+        nativeCursorEvent->imageData = QByteArray(reinterpret_cast<const char*>(cursorUpdate->imageData),
+                                                  static_cast<int>(cursorUpdate->imageSize));
+    }
+
+    SDL_Event event = {};
+    event.type = SDL_USEREVENT;
+    event.user.code = SDL_CODE_NATIVE_CURSOR_UPDATE;
+    event.user.data1 = nativeCursorEvent;
+    if (SDL_PushEvent(&event) < 0) {
+        delete nativeCursorEvent;
+    }
+}
+
+void Session::applyNativeCursor(const NativeCursorEvent* cursorEvent)
+{
+    if (!m_StreamConfig.enableNativeCursor) {
+        return;
+    }
+
+    if (!cursorEvent->visible) {
+        SDL_ShowCursor(SDL_DISABLE);
+        return;
+    }
+
+    const quint64 requiredImageBytes = static_cast<quint64>(cursorEvent->width) *
+            static_cast<quint64>(cursorEvent->height) * 4;
+
+    if (cursorEvent->shapeChanged &&
+            (m_NativeCursor == nullptr || cursorEvent->shapeId != m_NativeCursorShapeId) &&
+            cursorEvent->format == LI_NATIVE_CURSOR_FORMAT_BGRA &&
+            cursorEvent->width > 0 &&
+            cursorEvent->height > 0 &&
+            static_cast<quint64>(cursorEvent->imageData.size()) >= requiredImageBytes) {
+        SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(
+                    const_cast<char*>(cursorEvent->imageData.constData()),
+                    cursorEvent->width,
+                    cursorEvent->height,
+                    32,
+                    cursorEvent->width * 4,
+                    SDL_PIXELFORMAT_BGRA32);
+        if (surface != nullptr) {
+            SDL_Cursor* cursor = SDL_CreateColorCursor(surface,
+                                                       cursorEvent->hotspotX,
+                                                       cursorEvent->hotspotY);
+            SDL_FreeSurface(surface);
+
+            if (cursor != nullptr) {
+                SDL_Cursor* oldCursor = m_NativeCursor;
+                m_NativeCursor = cursor;
+                m_NativeCursorShapeId = cursorEvent->shapeId;
+                SDL_SetCursor(m_NativeCursor);
+
+                if (oldCursor != nullptr) {
+                    SDL_FreeCursor(oldCursor);
+                }
+            }
+            else {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "SDL_CreateColorCursor() failed for native cursor: %s",
+                            SDL_GetError());
+            }
+        }
+        else {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "SDL_CreateRGBSurfaceWithFormatFrom() failed for native cursor: %s",
+                        SDL_GetError());
+        }
+    }
+    else if (m_NativeCursor != nullptr) {
+        SDL_SetCursor(m_NativeCursor);
+    }
+
+    const char* nativeCursorUserHidden = SDL_GetHint("MoonlightNativeCursorUserHidden");
+    SDL_ShowCursor(nativeCursorUserHidden != nullptr && strcmp(nativeCursorUserHidden, "1") == 0 ?
+                   SDL_DISABLE : SDL_ENABLE);
 }
 
 
@@ -789,6 +903,8 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_Computer(computer),
       m_App(app),
       m_Window(nullptr),
+      m_NativeCursor(nullptr),
+      m_NativeCursorShapeId(0),
       m_VideoDecoder(nullptr),
       m_DecoderLock(SDL_CreateMutex()),
       m_AudioMuted(false),
@@ -923,6 +1039,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
     LiInitializeStreamConfiguration(&m_StreamConfig);
     m_StreamConfig.width = m_Preferences->width;
     m_StreamConfig.height = m_Preferences->height;
+    m_StreamConfig.enableNativeCursor = m_Preferences->absoluteMouseMode;
 
     int x, y, width, height;
     getWindowDimensions(x, y, width, height);
@@ -2424,6 +2541,13 @@ void Session::exec()
                 m_InputHandler->setAdaptiveTriggers((uint16_t)(uintptr_t)event.user.data1,
                                                     (DualSenseOutputReport *)event.user.data2);
                 break;
+            case SDL_CODE_NATIVE_CURSOR_UPDATE:
+            {
+                NativeCursorEvent* nativeCursorEvent = static_cast<NativeCursorEvent*>(event.user.data1);
+                applyNativeCursor(nativeCursorEvent);
+                delete nativeCursorEvent;
+                break;
+            }
             default:
                 SDL_assert(false);
             }
@@ -2759,6 +2883,11 @@ DispatchDeferredCleanup:
 
     // This must be called after the decoder is deleted, because
     // the renderer may want to interact with the window
+    if (m_NativeCursor != nullptr) {
+        SDL_FreeCursor(m_NativeCursor);
+        m_NativeCursor = nullptr;
+    }
+
     SDL_DestroyWindow(m_Window);
 
     if (iconSurface != nullptr) {
