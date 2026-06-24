@@ -2,6 +2,8 @@
 
 #include <QSemaphore>
 #include <QQuickWindow>
+#include <QElapsedTimer>
+#include <QMutex>
 
 #include <Limelight.h>
 #include <opus_multistream.h>
@@ -185,6 +187,8 @@ private:
 
     void triggerAutoReconnect(const char* reason);
 
+    void logStartupTiming(const char* stage);
+
     enum class DecoderAvailability {
         None,
         Software,
@@ -255,6 +259,9 @@ private:
     void clSetAdaptiveTriggers(uint16_t controllerNumber, uint8_t eventFlags, uint8_t typeLeft, uint8_t typeRight, uint8_t *left, uint8_t *right);
 
     static
+    void clNativeCursor(PSS_NATIVE_CURSOR_UPDATE cursorUpdate);
+
+    static
     int arInit(int audioConfiguration,
                const POPUS_MULTISTREAM_CONFIGURATION opusConfig,
                void* arContext, int arFlags);
@@ -274,6 +281,9 @@ private:
     static
     int drSubmitDecodeUnit(PDECODE_UNIT du);
 
+    struct NativeCursorEvent;
+    void applyNativeCursor(const NativeCursorEvent* cursorEvent);
+
     StreamingPreferences* m_Preferences;
     bool m_IsFullScreen;
     SupportedVideoFormatList m_SupportedVideoFormats; // Sorted in order of descending priority
@@ -283,6 +293,8 @@ private:
     NvComputer* m_Computer;
     NvApp m_App;
     SDL_Window* m_Window;
+    SDL_Cursor* m_NativeCursor;
+    quint32 m_NativeCursorShapeId;
     IVideoDecoder* m_VideoDecoder;
     SDL_mutex* m_DecoderLock;
     bool m_AudioDisabled;
@@ -300,6 +312,9 @@ private:
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;
+    QElapsedTimer m_StartupTimer;
+    QMutex m_StartupTimingLock;
+    qint64 m_LastStartupTimingMs;
 
     int m_ActiveVideoFormat;
     int m_ActiveVideoWidth;

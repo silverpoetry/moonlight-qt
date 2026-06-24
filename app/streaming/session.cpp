@@ -29,6 +29,7 @@
 #define SDL_CODE_GAMECONTROLLER_SET_MOTION_EVENT_STATE 103
 #define SDL_CODE_GAMECONTROLLER_SET_CONTROLLER_LED 104
 #define SDL_CODE_GAMECONTROLLER_SET_ADAPTIVE_TRIGGERS 105
+#define SDL_CODE_NATIVE_CURSOR_UPDATE 106
 
 #define AUTO_RECONNECT_SUSPEND_GAP_MS 5000
 
@@ -45,6 +46,7 @@
 #include <QScreen>
 #include <QHash>
 #include <QMutex>
+#include <QByteArray>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QQuickOpenGLUtils>
@@ -65,7 +67,8 @@ CONNECTION_LISTENER_CALLBACKS Session::k_ConnCallbacks = {
     Session::clRumbleTriggers,
     Session::clSetMotionEventState,
     Session::clSetControllerLED,
-    Session::clSetAdaptiveTriggers
+    Session::clSetAdaptiveTriggers,
+    Session::clNativeCursor
 };
 
 Session* Session::s_ActiveSession;
@@ -118,6 +121,21 @@ QHash<DecoderAvailabilityCacheKey, int> s_DecoderAvailabilityCache;
 QHash<DecoderAvailabilityCacheKey, DecoderPropertiesCacheValue> s_DecoderPropertiesCache;
 QMutex s_DecoderCacheLock;
 }
+
+struct Session::NativeCursorEvent
+{
+    bool visible;
+    bool shapeChanged;
+    quint8 format;
+    qint32 x;
+    qint32 y;
+    quint16 width;
+    quint16 height;
+    quint16 hotspotX;
+    quint16 hotspotY;
+    quint32 shapeId;
+    QByteArray imageData;
+};
 
 void Session::clStageStarting(int stage)
 {
@@ -333,6 +351,102 @@ void Session::clSetAdaptiveTriggers(uint16_t controllerNumber, uint8_t eventFlag
 
     setControllerLEDEvent.user.data2 = (void *) state;
     SDL_PushEvent(&setControllerLEDEvent);
+}
+
+void Session::clNativeCursor(PSS_NATIVE_CURSOR_UPDATE cursorUpdate)
+{
+    if (s_ActiveSession == nullptr || !s_ActiveSession->m_StreamConfig.enableNativeCursor) {
+        return;
+    }
+
+    NativeCursorEvent* nativeCursorEvent = new NativeCursorEvent();
+    nativeCursorEvent->visible = (cursorUpdate->flags & LI_NATIVE_CURSOR_FLAG_VISIBLE) != 0;
+    nativeCursorEvent->shapeChanged = (cursorUpdate->flags & LI_NATIVE_CURSOR_FLAG_SHAPE) != 0;
+    nativeCursorEvent->format = cursorUpdate->format;
+    nativeCursorEvent->x = cursorUpdate->x;
+    nativeCursorEvent->y = cursorUpdate->y;
+    nativeCursorEvent->width = cursorUpdate->width;
+    nativeCursorEvent->height = cursorUpdate->height;
+    nativeCursorEvent->hotspotX = cursorUpdate->hotspotX;
+    nativeCursorEvent->hotspotY = cursorUpdate->hotspotY;
+    nativeCursorEvent->shapeId = cursorUpdate->shapeId;
+
+    if (cursorUpdate->imageData != nullptr && cursorUpdate->imageSize > 0) {
+        nativeCursorEvent->imageData = QByteArray(reinterpret_cast<const char*>(cursorUpdate->imageData),
+                                                  static_cast<int>(cursorUpdate->imageSize));
+    }
+
+    SDL_Event event = {};
+    event.type = SDL_USEREVENT;
+    event.user.code = SDL_CODE_NATIVE_CURSOR_UPDATE;
+    event.user.data1 = nativeCursorEvent;
+    if (SDL_PushEvent(&event) < 0) {
+        delete nativeCursorEvent;
+    }
+}
+
+void Session::applyNativeCursor(const NativeCursorEvent* cursorEvent)
+{
+    if (!m_StreamConfig.enableNativeCursor) {
+        return;
+    }
+
+    if (!cursorEvent->visible) {
+        SDL_ShowCursor(SDL_DISABLE);
+        return;
+    }
+
+    const quint64 requiredImageBytes = static_cast<quint64>(cursorEvent->width) *
+            static_cast<quint64>(cursorEvent->height) * 4;
+
+    if (cursorEvent->shapeChanged &&
+            (m_NativeCursor == nullptr || cursorEvent->shapeId != m_NativeCursorShapeId) &&
+            cursorEvent->format == LI_NATIVE_CURSOR_FORMAT_BGRA &&
+            cursorEvent->width > 0 &&
+            cursorEvent->height > 0 &&
+            static_cast<quint64>(cursorEvent->imageData.size()) >= requiredImageBytes) {
+        SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(
+                    const_cast<char*>(cursorEvent->imageData.constData()),
+                    cursorEvent->width,
+                    cursorEvent->height,
+                    32,
+                    cursorEvent->width * 4,
+                    SDL_PIXELFORMAT_BGRA32);
+        if (surface != nullptr) {
+            SDL_Cursor* cursor = SDL_CreateColorCursor(surface,
+                                                       cursorEvent->hotspotX,
+                                                       cursorEvent->hotspotY);
+            SDL_FreeSurface(surface);
+
+            if (cursor != nullptr) {
+                SDL_Cursor* oldCursor = m_NativeCursor;
+                m_NativeCursor = cursor;
+                m_NativeCursorShapeId = cursorEvent->shapeId;
+                SDL_SetCursor(m_NativeCursor);
+
+                if (oldCursor != nullptr) {
+                    SDL_FreeCursor(oldCursor);
+                }
+            }
+            else {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "SDL_CreateColorCursor() failed for native cursor: %s",
+                            SDL_GetError());
+            }
+        }
+        else {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "SDL_CreateRGBSurfaceWithFormatFrom() failed for native cursor: %s",
+                        SDL_GetError());
+        }
+    }
+    else if (m_NativeCursor != nullptr) {
+        SDL_SetCursor(m_NativeCursor);
+    }
+
+    const char* nativeCursorUserHidden = SDL_GetHint("MoonlightNativeCursorUserHidden");
+    SDL_ShowCursor(nativeCursorUserHidden != nullptr && strcmp(nativeCursorUserHidden, "1") == 0 ?
+                   SDL_DISABLE : SDL_ENABLE);
 }
 
 
@@ -789,6 +903,8 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_Computer(computer),
       m_App(app),
       m_Window(nullptr),
+      m_NativeCursor(nullptr),
+      m_NativeCursorShapeId(0),
       m_VideoDecoder(nullptr),
       m_DecoderLock(SDL_CreateMutex()),
       m_AudioMuted(false),
@@ -802,6 +918,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_SuppressTerminationErrors(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
+      m_LastStartupTimingMs(0),
       m_ActiveVideoFormat(0),
       m_ActiveVideoWidth(0),
       m_ActiveVideoHeight(0),
@@ -816,6 +933,22 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_AudioSampleCount(0),
       m_DropAudioEndTime(0)
 {
+}
+
+void Session::logStartupTiming(const char* stage)
+{
+    QMutexLocker locker(&m_StartupTimingLock);
+
+    if (!m_StartupTimer.isValid()) {
+        m_StartupTimer.start();
+        m_LastStartupTimingMs = 0;
+    }
+
+    qint64 now = m_StartupTimer.elapsed();
+    qInfo().nospace() << "StartupTiming " << stage
+                      << " total=" << now << "ms"
+                      << " delta=" << (now - m_LastStartupTimingMs) << "ms";
+    m_LastStartupTimingMs = now;
 }
 
 Session::~Session()
@@ -838,6 +971,13 @@ Session* Session::createReconnectSession()
 
 bool Session::initialize(QQuickWindow* qtWindow)
 {
+    {
+        QMutexLocker locker(&m_StartupTimingLock);
+        m_StartupTimer.restart();
+        m_LastStartupTimingMs = 0;
+    }
+    logStartupTiming("Session.initialize begin");
+
     m_QtWindow = qtWindow;
 
 #ifdef Q_OS_DARWIN
@@ -888,6 +1028,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
                      SDL_GetError());
         return false;
     }
+    logStartupTiming("Session.initialize SDL video ready");
 
     // Stop text input. SDL enables it by default
     // when we initialize the video subsystem, but this
@@ -898,9 +1039,11 @@ bool Session::initialize(QQuickWindow* qtWindow)
     LiInitializeStreamConfiguration(&m_StreamConfig);
     m_StreamConfig.width = m_Preferences->width;
     m_StreamConfig.height = m_Preferences->height;
+    m_StreamConfig.enableNativeCursor = m_Preferences->absoluteMouseMode;
 
     int x, y, width, height;
     getWindowDimensions(x, y, width, height);
+    logStartupTiming("Session.initialize window dimensions ready");
 
     // Create a hidden window to use for decoder initialization tests
     SDL_Window* testWindow = StreamUtils::createTestWindow();
@@ -911,6 +1054,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         return false;
     }
+    logStartupTiming("Session.initialize decoder test window ready");
 
     qInfo() << "Server GPU:" << m_Computer->gpuModel;
     qInfo() << "Server GFE version:" << m_Computer->gfeVersion;
@@ -962,6 +1106,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
     m_AudioCallbacks.cleanup = arCleanup;
     m_AudioCallbacks.decodeAndPlaySample = arDecodeAndPlaySample;
     m_AudioCallbacks.capabilities = getAudioRendererCapabilities(m_StreamConfig.audioConfiguration);
+    logStartupTiming("Session.initialize audio callbacks ready");
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "Audio channel count: %d",
@@ -1104,6 +1249,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
         m_SupportedVideoFormats.removeByMask(~(VIDEO_FORMAT_MASK_AV1 | VIDEO_FORMAT_MASK_H265));
         break;
     }
+    logStartupTiming("Session.initialize codec candidates ready");
 
     // NB: Since deprioritization puts codecs in reverse order (at the bottom of the list),
     // we want to deprioritize for the most critical attributes last to ensure they are the
@@ -1179,7 +1325,9 @@ bool Session::initialize(QQuickWindow* qtWindow)
 
     // Check for validation errors/warnings and emit
     // signals for them, if appropriate
+    logStartupTiming("Session.initialize validateLaunch begin");
     bool ret = validateLaunch(testWindow);
+    logStartupTiming(ret ? "Session.initialize validateLaunch ok" : "Session.initialize validateLaunch failed");
 
     if (ret) {
         // Video format is now locked in
@@ -1187,16 +1335,20 @@ bool Session::initialize(QQuickWindow* qtWindow)
 
         // Populate decoder-dependent properties.
         // Must be done after validateLaunch() since m_StreamConfig is finalized.
+        logStartupTiming("Session.initialize populateDecoderProperties begin");
         ret = populateDecoderProperties(testWindow);
+        logStartupTiming(ret ? "Session.initialize populateDecoderProperties ok" : "Session.initialize populateDecoderProperties failed");
     }
 
     SDL_DestroyWindow(testWindow);
+    logStartupTiming("Session.initialize decoder test window destroyed");
 
     if (!ret) {
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         return false;
     }
 
+    logStartupTiming("Session.initialize complete");
     return true;
 }
 
@@ -1422,12 +1574,24 @@ bool Session::validateLaunch(SDL_Window* testWindow)
         }
     }
 
-    // Test if audio works at the specified audio configuration
-    bool audioTestPassed = testAudio(m_StreamConfig.audioConfiguration);
+    // Stereo doesn't need launch-time validation because there's no lower
+    // channel layout to fall back to. Avoid opening WASAPI once here and again
+    // when the real audio stream starts.
+    bool audioTestPassed = true;
+    if (CHANNEL_COUNT_FROM_AUDIO_CONFIGURATION(m_StreamConfig.audioConfiguration) > 2) {
+        logStartupTiming("Session.validateLaunch audio test begin");
+        audioTestPassed = testAudio(m_StreamConfig.audioConfiguration);
+        logStartupTiming(audioTestPassed ? "Session.validateLaunch audio test ok" : "Session.validateLaunch audio test failed");
+    }
+    else {
+        logStartupTiming("Session.validateLaunch stereo audio test skipped");
+    }
 
     // Gracefully degrade to stereo if surround sound doesn't work
     if (!audioTestPassed && CHANNEL_COUNT_FROM_AUDIO_CONFIGURATION(m_StreamConfig.audioConfiguration) > 2) {
+        logStartupTiming("Session.validateLaunch stereo audio fallback begin");
         audioTestPassed = testAudio(AUDIO_CONFIGURATION_STEREO);
+        logStartupTiming(audioTestPassed ? "Session.validateLaunch stereo audio fallback ok" : "Session.validateLaunch stereo audio fallback failed");
         if (audioTestPassed) {
             m_StreamConfig.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
             emitLaunchWarning(tr("Your selected surround sound setting is not supported by the current audio device."));
@@ -1487,6 +1651,7 @@ bool Session::validateLaunch(SDL_Window* testWindow)
         return false;
     }
 
+    logStartupTiming("Session.validateLaunch complete");
     return true;
 }
 
@@ -1819,6 +1984,8 @@ public:
 // Called in a non-main thread
 bool Session::startConnectionAsync()
 {
+    logStartupTiming("Session.startConnectionAsync begin");
+
     // The UI should have ensured the old game was already quit
     // if we decide to stream a different game.
     Q_ASSERT(m_Computer->currentGameId == 0 ||
@@ -1846,6 +2013,7 @@ bool Session::startConnectionAsync()
         // option to control whether the display mode is adjusted
         enableGameOptimizations = m_Preferences->gameOptimizations;
     }
+    logStartupTiming("Session.startConnectionAsync game optimization resolved");
 
     QString rtspSessionUrl;
 
@@ -1874,7 +2042,11 @@ bool Session::startConnectionAsync()
             http.setServerCert(m_Computer->serverCert);
             http.setTrueUid(!m_Computer->isNvidiaServerSoftware);
         }
+        logStartupTiming("Session.startConnectionAsync host address selected");
 
+        logStartupTiming(m_Computer->currentGameId != 0 ?
+                         "Session.startConnectionAsync resume request begin" :
+                         "Session.startConnectionAsync launch request begin");
         http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
                       m_Computer->isNvidiaServerSoftware,
                       m_App.id, &m_StreamConfig,
@@ -1883,10 +2055,13 @@ bool Session::startConnectionAsync()
                       m_InputHandler->getAttachedGamepadMask(),
                       !m_Preferences->multiController,
                       rtspSessionUrl);
+        logStartupTiming("Session.startConnectionAsync launch request ok");
     } catch (const GfeHttpResponseException& e) {
+        logStartupTiming("Session.startConnectionAsync launch request GFE error");
         emit displayLaunchError(tr("Host returned error: %1").arg(e.toQString()));
         return false;
     } catch (const QtNetworkReplyException& e) {
+        logStartupTiming("Session.startConnectionAsync launch request network error");
         emit displayLaunchError(e.toQString());
         return false;
     }
@@ -1948,6 +2123,7 @@ bool Session::startConnectionAsync()
             break;
         }
     }
+    logStartupTiming("Session.startConnectionAsync packet config ready");
 
     // If the user has chosen YUV444 without adjusting the bitrate but the host doesn't
     // support YUV444 streaming, use the default non-444 bitrate for the stream instead.
@@ -1967,16 +2143,20 @@ bool Session::startConnectionAsync()
                                                                          false);
     }
 
+    logStartupTiming("Session.startConnectionAsync LiStartConnection begin");
     int err = LiStartConnection(&hostInfo, &m_StreamConfig, &k_ConnCallbacks,
                                 &m_VideoCallbacks, &m_AudioCallbacks,
                                 NULL, 0, NULL, 0);
     if (err != 0) {
         // We already displayed an error dialog in the stage failure
         // listener.
+        logStartupTiming("Session.startConnectionAsync LiStartConnection failed");
         return false;
     }
+    logStartupTiming("Session.startConnectionAsync LiStartConnection ok");
 
     emit connectionStarted();
+    logStartupTiming("Session.startConnectionAsync connectionStarted emitted");
     return true;
 }
 
@@ -2034,8 +2214,11 @@ void Session::triggerAutoReconnect(const char* reason)
 
 void Session::start()
 {
+    logStartupTiming("Session.start begin");
+
     // Wait for any old session to finish cleanup
     s_ActiveSessionSemaphore.acquire();
+    logStartupTiming("Session.start active session acquired");
 
     // We're now active
     s_ActiveSession = this;
@@ -2043,12 +2226,14 @@ void Session::start()
     // Initialize the gamepad code with our preferences
     // NB: m_InputHandler must be initialize before starting the connection.
     m_InputHandler = new SdlInputHandler(*m_Preferences, m_StreamConfig.width, m_StreamConfig.height);
+    logStartupTiming("Session.start input handler ready");
 
     // Kick off the async connection thread then return to the caller to pump the event loop
     auto thread = new AsyncConnectionStartThread(this);
     QObject::connect(thread, &QThread::finished, this, &Session::exec);
     QObject::connect(thread, &QThread::finished, thread, &QThread::deleteLater);
     thread->start();
+    logStartupTiming("Session.start async connection thread started");
 }
 
 void Session::interrupt()
@@ -2065,8 +2250,11 @@ void Session::interrupt()
 
 void Session::exec()
 {
+    logStartupTiming("Session.exec begin");
+
     // If the connection failed, clean up and abort the connection.
     if (!m_AsyncConnectionSuccess) {
+        logStartupTiming("Session.exec connection failed cleanup begin");
         delete m_InputHandler;
         m_InputHandler = nullptr;
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -2079,9 +2267,11 @@ void Session::exec()
     // we've emitted from the async connection thread.
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     QCoreApplication::sendPostedEvents();
+    logStartupTiming("Session.exec Qt events flushed");
 
     int x, y, width, height;
     getWindowDimensions(x, y, width, height);
+    logStartupTiming("Session.exec window dimensions ready");
 
 #ifdef STEAM_LINK
     // We need a little delay before creating the window or we will trigger some kind
@@ -2161,6 +2351,7 @@ void Session::exec()
             return;
         }
     }
+    logStartupTiming("Session.exec SDL window created");
 
     m_InputHandler->setWindow(m_Window);
 
@@ -2193,6 +2384,7 @@ void Session::exec()
     if (m_IsFullScreen) {
         SDL_SetWindowFullscreen(m_Window, m_FullScreenFlag);
     }
+    logStartupTiming("Session.exec window configured");
 
     bool needsFirstEnterCapture = false;
     bool needsPostDecoderCreationCapture = false;
@@ -2248,6 +2440,7 @@ void Session::exec()
 
     // Switch to async logging mode when we enter the SDL loop
     StreamUtils::enterAsyncLoggingMode();
+    logStartupTiming("Session.exec entering SDL event loop");
 
     // Hijack this thread to be the SDL main thread. We have to do this
     // because we want to suspend all Qt processing until the stream is over.
@@ -2356,6 +2549,13 @@ void Session::exec()
                 m_InputHandler->setAdaptiveTriggers((uint16_t)(uintptr_t)event.user.data1,
                                                     (DualSenseOutputReport *)event.user.data2);
                 break;
+            case SDL_CODE_NATIVE_CURSOR_UPDATE:
+            {
+                NativeCursorEvent* nativeCursorEvent = static_cast<NativeCursorEvent*>(event.user.data1);
+                applyNativeCursor(nativeCursorEvent);
+                delete nativeCursorEvent;
+                break;
+            }
             default:
                 SDL_assert(false);
             }
@@ -2485,6 +2685,7 @@ void Session::exec()
                         event.window.event,
                         event.window.data1,
                         event.window.data2);
+            logStartupTiming("Session.exec decoder recreation requested");
 
             // Fall through
         case SDL_RENDER_DEVICE_RESET:
@@ -2493,6 +2694,7 @@ void Session::exec()
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                             "Recreating renderer by internal request: %d",
                             event.type);
+                logStartupTiming("Session.exec decoder recreation requested internally");
             }
 
             SDL_LockMutex(m_DecoderLock);
@@ -2533,6 +2735,7 @@ void Session::exec()
 
                 // Choose a new decoder (hopefully the same one, but possibly
                 // not if a GPU was removed or something).
+                logStartupTiming("Session.exec chooseDecoder begin");
                 if (!chooseDecoder(m_Preferences->videoDecoderSelection,
                                    m_Window, m_ActiveVideoFormat, m_ActiveVideoWidth,
                                    m_ActiveVideoHeight, m_ActiveVideoFrameRate,
@@ -2543,9 +2746,11 @@ void Session::exec()
                     SDL_UnlockMutex(m_DecoderLock);
                     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                                  "Failed to recreate decoder after reset");
+                    logStartupTiming("Session.exec chooseDecoder failed");
                     emit displayLaunchError(tr("Unable to initialize video decoder. Please check your streaming settings and try again."));
                     goto DispatchDeferredCleanup;
                 }
+                logStartupTiming("Session.exec chooseDecoder ok");
 
                 // As of SDL 2.0.12, SDL_RecreateWindow() doesn't carry over mouse capture
                 // or mouse hiding state to the new window. By capturing after the decoder
@@ -2558,6 +2763,7 @@ void Session::exec()
 
             // Request an IDR frame to complete the reset
             LiRequestIdrFrame();
+            logStartupTiming("Session.exec IDR requested after decoder recreation");
 
             // Set HDR mode. We may miss the callback if we're in the middle
             // of recreating our decoder at the time the HDR transition happens.
@@ -2632,6 +2838,8 @@ void Session::exec()
     }
 
 DispatchDeferredCleanup:
+    logStartupTiming("Session.exec cleanup begin");
+
     // Switch back to synchronous logging mode
     StreamUtils::exitAsyncLoggingMode();
 
@@ -2688,6 +2896,11 @@ DispatchDeferredCleanup:
 
     // This must be called after the decoder is deleted, because
     // the renderer may want to interact with the window
+    if (m_NativeCursor != nullptr) {
+        SDL_FreeCursor(m_NativeCursor);
+        m_NativeCursor = nullptr;
+    }
+
     SDL_DestroyWindow(m_Window);
 
     if (iconSurface != nullptr) {

@@ -119,8 +119,11 @@ bool Session::testAudio(int audioConfiguration)
 {
     auto it = s_AudioConfigurationSupportCache.constFind(audioConfiguration);
     if (it != s_AudioConfigurationSupportCache.cend()) {
+        logStartupTiming("Session.testAudio cache hit");
         return it.value();
     }
+
+    logStartupTiming("Session.testAudio renderer create begin");
 
     // Build a fake OPUS_MULTISTREAM_CONFIGURATION to give
     // the renderer the channel count and sample rate.
@@ -132,12 +135,14 @@ bool Session::testAudio(int audioConfiguration)
     IAudioRenderer* audioRenderer = createAudioRenderer(&opusConfig);
     if (audioRenderer == nullptr) {
         s_AudioConfigurationSupportCache.insert(audioConfiguration, false);
+        logStartupTiming("Session.testAudio renderer create failed");
         return false;
     }
 
     delete audioRenderer;
     s_AudioConfigurationSupportCache.insert(audioConfiguration, true);
 
+    logStartupTiming("Session.testAudio renderer create ok");
     return true;
 }
 

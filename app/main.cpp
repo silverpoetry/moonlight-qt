@@ -52,6 +52,7 @@
 #include "backend/autoupdatechecker.h"
 #include "backend/computermanager.h"
 #include "backend/systemproperties.h"
+#include "streaming/audio/audiodeviceprewarmer.h"
 #include "streaming/session.h"
 #include "settings/streamingpreferences.h"
 #include "gui/sdlgamepadkeynavigation.h"
@@ -79,6 +80,7 @@ static QTextStream s_LoggerStream(stderr);
 static QThreadPool s_LoggerThread;
 static QMutex s_SyncLoggerMutex;
 static bool s_SuppressVerboseOutput;
+static const char k_LogTimeFormat[] = "HH:mm:ss.zzz";
 static QRegularExpression k_RikeyRegex("&rikey=\\w+");
 static QRegularExpression k_RikeyIdRegex("&rikeyid=[\\d-]+");
 #ifdef LOG_TO_FILE
@@ -195,7 +197,7 @@ void sdlLogToDiskHandler(void*, int category, SDL_LogPriority priority, const ch
     }
 
     QTime logTime = QTime::fromMSecsSinceStartOfDay(s_LoggerTime.elapsed());
-    QString txt = QString("%1 - SDL %2 (%3): %4\n").arg(logTime.toString()).arg(priorityTxt).arg(category).arg(message);
+    QString txt = QString("%1 - SDL %2 (%3): %4\n").arg(logTime.toString(k_LogTimeFormat)).arg(priorityTxt).arg(category).arg(message);
 
     logToLoggerStream(txt);
 }
@@ -232,7 +234,7 @@ void qtLogToDiskHandler(QtMsgType type, const QMessageLogContext&, const QString
     }
 
     QTime logTime = QTime::fromMSecsSinceStartOfDay(s_LoggerTime.elapsed());
-    QString txt = QString("%1 - Qt %2: %3\n").arg(logTime.toString()).arg(typeTxt).arg(msg);
+    QString txt = QString("%1 - Qt %2: %3\n").arg(logTime.toString(k_LogTimeFormat)).arg(typeTxt).arg(msg);
 
     logToLoggerStream(txt);
 }
@@ -260,7 +262,7 @@ void ffmpegLogToDiskHandler(void* ptr, int level, const char* fmt, va_list vl)
 
     if (shouldPrefixThisMessage) {
         QTime logTime = QTime::fromMSecsSinceStartOfDay(s_LoggerTime.elapsed());
-        QString txt = QString("%1 - FFmpeg: %2").arg(logTime.toString()).arg(lineBuffer);
+        QString txt = QString("%1 - FFmpeg: %2").arg(logTime.toString(k_LogTimeFormat)).arg(lineBuffer);
         logToLoggerStream(txt);
     }
     else {
@@ -859,6 +861,12 @@ int main(int argc, char *argv[])
         if (list.size() == 3) {
             sdl3VersionInt = SDL_VERSIONNUM(list.at(0).toInt(), list.at(1).toInt(), list.at(2).toInt());
         }
+    }
+
+    SdlAudioDevicePrewarmer audioPrewarmer;
+    if (commandLineParserResult == GlobalCommandLineParser::NormalStartRequested ||
+            commandLineParserResult == GlobalCommandLineParser::StreamRequested) {
+        audioPrewarmer.start();
     }
 
     // SDL 3.4.0 and 3.4.2 have bugs in atomic KMSDRM support that break us,
