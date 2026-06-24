@@ -74,10 +74,12 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
 
     case KeyComboToggleCursorHide:
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Detected show mouse combo");
+                    "Detected cursor visibility toggle combo");
 
         if (!SDL_GetRelativeMouseMode()) {
             m_MouseCursorCapturedVisibilityState = !m_MouseCursorCapturedVisibilityState;
+            SDL_SetHint("MoonlightNativeCursorUserHidden",
+                        m_MouseCursorCapturedVisibilityState == SDL_DISABLE ? "1" : "0");
             SDL_ShowCursor(m_MouseCursorCapturedVisibilityState);
         }
         else {
