@@ -1063,32 +1063,9 @@ int main(int argc, char *argv[])
 
     int err = app.exec();
 
-    // Give worker tasks time to properly exit. CLI operations may depend on
-    // their worker completing, but normal GUI exit shouldn't sit for 30 seconds
-    // waiting on stale discovery/network tasks.
-    QThreadPool* globalThreadPool = QThreadPool::globalInstance();
-    const bool normalGuiExit = commandLineParserResult == GlobalCommandLineParser::NormalStartRequested;
-    if (normalGuiExit) {
-        globalThreadPool->clear();
-    }
-
-    const int activeWorkerThreads = globalThreadPool->activeThreadCount();
-    if (activeWorkerThreads > 0) {
-        QElapsedTimer workerShutdownTimer;
-        workerShutdownTimer.start();
-
-        const int workerShutdownTimeoutMs = normalGuiExit ? 1500 : 30000;
-        if (!globalThreadPool->waitForDone(workerShutdownTimeoutMs)) {
-            qWarning() << "Continuing application shutdown with"
-                       << globalThreadPool->activeThreadCount()
-                       << "global worker thread(s) still active after"
-                       << workerShutdownTimer.elapsed() << "ms";
-        }
-        else if (workerShutdownTimer.elapsed() > 250) {
-            qInfo() << "Waited" << workerShutdownTimer.elapsed()
-                    << "ms for global worker thread shutdown";
-        }
-    }
+    // Give worker tasks time to properly exit. Fixes PendingQuitTask
+    // sometimes freezing and blocking process exit.
+    QThreadPool::globalInstance()->waitForDone(30000);
 
     // Restore the default logger for all libraries before shutting down ours
     if (loggingHandlersInstalled) {
