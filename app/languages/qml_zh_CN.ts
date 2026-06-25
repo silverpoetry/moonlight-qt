@@ -957,8 +957,8 @@
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1319"/>
-        <source>This enables seamless mouse control without capturing the client&apos;s mouse cursor. It is ideal for remote desktop usage but will not work in most games.</source>
-        <translation>这可以实现无缝鼠标控制，而无需捕获客户端的鼠标光标。这是理想的远程桌面使用方案，但不会在大多数游戏中工作。</translation>
+        <source>This enables seamless mouse control without capturing the client&apos;s mouse cursor. If the host supports native cursor streaming, Moonlight will draw the host cursor locally for lower cursor latency.</source>
+        <translation>这可以实现无缝鼠标控制，而无需捕获客户端的鼠标光标。如果主机支持原生光标串流，Moonlight 会在本地绘制主机光标以降低光标延迟。</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1320"/>
