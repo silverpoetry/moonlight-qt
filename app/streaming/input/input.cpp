@@ -347,7 +347,7 @@ void SdlInputHandler::notifyFocusLost()
 
 void SdlInputHandler::notifyFocusGained()
 {
-    updateTouchpadGlobalGesturesEnabled(isSystemKeyCaptureActive());
+    updateTouchpadGlobalGesturesEnabled(m_EnableTouchpadGestures && isSystemKeyCaptureActive());
 }
 
 bool SdlInputHandler::isCaptureActive()
