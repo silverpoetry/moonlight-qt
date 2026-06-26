@@ -140,6 +140,10 @@ public:
 
     bool handleSystemWindowEvent(SDL_SysWMmsg* msg);
 
+    bool consumeLocalClosePassthroughQuit();
+
+    bool handleNativeWindowCloseMessage(unsigned int message, uintptr_t wParam);
+
     bool handleNativeTouchpadWheelMessage(unsigned int message, uintptr_t wParam);
 
     void registerTouchpadWindow();
@@ -209,6 +213,8 @@ private:
     bool isTouchpadCtrlFallbackActive() const;
 
     void updateTouchpadGlobalGesturesEnabled(bool enabled);
+
+    void forwardLocalCloseToRemote();
 
     void installWindowsMessageHook(void* hwnd);
 
@@ -296,6 +302,7 @@ private:
     int m_TouchpadCachedDeviceTop;
     int m_TouchpadCachedDeviceWidth;
     int m_TouchpadCachedDeviceHeight;
+    Uint32 m_LocalClosePassthroughUntil;
     void* m_WindowsMessageHookHwnd;
     void* m_WindowsMessageHookPrevWndProc;
 

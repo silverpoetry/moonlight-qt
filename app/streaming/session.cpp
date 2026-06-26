@@ -2631,6 +2631,10 @@ void Session::exec()
 #endif
         switch (event.type) {
         case SDL_QUIT:
+            if (m_InputHandler != nullptr && m_InputHandler->consumeLocalClosePassthroughQuit()) {
+                break;
+            }
+
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                         "Quit event received");
             goto DispatchDeferredCleanup;

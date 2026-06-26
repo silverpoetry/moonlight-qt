@@ -52,6 +52,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_TouchpadCachedDeviceTop(0),
       m_TouchpadCachedDeviceWidth(0),
       m_TouchpadCachedDeviceHeight(0),
+      m_LocalClosePassthroughUntil(0),
       m_WindowsMessageHookHwnd(nullptr),
       m_WindowsMessageHookPrevWndProc(nullptr)
 {

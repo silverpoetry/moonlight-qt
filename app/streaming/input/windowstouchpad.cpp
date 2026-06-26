@@ -16,6 +16,9 @@ constexpr float PINCH_CTRL_WHEEL_GUARD_THRESHOLD = 0.010f;
 constexpr float SCROLL_CENTER_THRESHOLD = 0.020f;
 constexpr Uint32 PINCH_WHEEL_SUPPRESS_MS = 250;
 constexpr Uint32 TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS = 180;
+constexpr Uint32 LOCAL_CLOSE_PASSTHROUGH_QUIT_MS = 750;
+constexpr short REMOTE_VK_F4 = 0x73;
+constexpr short REMOTE_VK_LMENU = 0xA4;
 constexpr wchar_t MESSAGE_HOOK_HANDLER_PROP[] = L"MoonlightNativeMessageHandler";
 constexpr wchar_t MESSAGE_HOOK_PREV_PROC_PROP[] = L"MoonlightNativeMessagePrevProc";
 
@@ -30,8 +33,11 @@ LRESULT CALLBACK nativeMessageHookWndProc(HWND hwnd, UINT message, WPARAM wParam
     auto prevProc = reinterpret_cast<WNDPROC>(
                 GetPropW(hwnd, MESSAGE_HOOK_PREV_PROC_PROP));
 
-    if (handler != nullptr && handler->handleNativeTouchpadWheelMessage(message, wParam)) {
-        return 0;
+    if (handler != nullptr) {
+        if (handler->handleNativeTouchpadWheelMessage(message, wParam) ||
+                handler->handleNativeWindowCloseMessage(message, wParam)) {
+            return 0;
+        }
     }
 
     if (prevProc != nullptr) {
@@ -158,6 +164,91 @@ bool SdlInputHandler::handleNativeTouchpadWheelMessage(unsigned int message, uin
 #endif
 }
 
+void SdlInputHandler::forwardLocalCloseToRemote()
+{
+#ifdef Q_OS_WIN32
+    if (!m_EnableTouchpadGestures || !isSystemKeyCaptureActive()) {
+        return;
+    }
+
+    const Uint32 now = SDL_GetTicks();
+    if (m_LocalClosePassthroughUntil != 0 &&
+            static_cast<Sint32>(m_LocalClosePassthroughUntil - now) > 0) {
+        return;
+    }
+
+    const short remoteAlt = static_cast<short>(0x8000 | REMOTE_VK_LMENU);
+    const short remoteF4 = static_cast<short>(0x8000 | REMOTE_VK_F4);
+
+    m_LocalClosePassthroughUntil = now + LOCAL_CLOSE_PASSTHROUGH_QUIT_MS;
+    LiSendKeyboardEvent(remoteAlt, KEY_ACTION_DOWN, MODIFIER_ALT);
+    LiSendKeyboardEvent(remoteF4, KEY_ACTION_DOWN, MODIFIER_ALT);
+    LiSendKeyboardEvent(remoteF4, KEY_ACTION_UP, MODIFIER_ALT);
+    LiSendKeyboardEvent(remoteAlt, KEY_ACTION_UP, 0);
+#endif
+}
+
+bool SdlInputHandler::handleNativeWindowCloseMessage(unsigned int message, uintptr_t wParam)
+{
+#ifdef Q_OS_WIN32
+    if (!m_EnableTouchpadGestures || !isSystemKeyCaptureActive()) {
+        return false;
+    }
+
+    switch (message) {
+    case WM_CLOSE:
+        forwardLocalCloseToRemote();
+        return true;
+
+    case WM_SYSCOMMAND:
+        if ((wParam & 0xFFF0) == SC_CLOSE) {
+            forwardLocalCloseToRemote();
+            return true;
+        }
+        break;
+
+    case WM_NCLBUTTONDOWN:
+    case WM_NCLBUTTONUP:
+    case WM_NCLBUTTONDBLCLK:
+    case WM_NCRBUTTONDOWN:
+    case WM_NCRBUTTONUP:
+    case WM_NCRBUTTONDBLCLK:
+        if (wParam == HTCLOSE) {
+            if (message == WM_NCLBUTTONDOWN || message == WM_NCRBUTTONDOWN) {
+                forwardLocalCloseToRemote();
+            }
+            return true;
+        }
+        break;
+    }
+#else
+    Q_UNUSED(message);
+    Q_UNUSED(wParam);
+#endif
+
+    return false;
+}
+
+bool SdlInputHandler::consumeLocalClosePassthroughQuit()
+{
+#ifdef Q_OS_WIN32
+    if (!m_EnableTouchpadGestures || m_LocalClosePassthroughUntil == 0) {
+        return false;
+    }
+
+    const Uint32 now = SDL_GetTicks();
+    if (static_cast<Sint32>(m_LocalClosePassthroughUntil - now) <= 0) {
+        m_LocalClosePassthroughUntil = 0;
+        return false;
+    }
+
+    m_LocalClosePassthroughUntil = 0;
+    return true;
+#else
+    return false;
+#endif
+}
+
 void SdlInputHandler::registerTouchpadWindow()
 {
 #ifdef Q_OS_WIN32
@@ -205,6 +296,10 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     }
 
     const UINT message = msg->msg.win.msg;
+    if (handleNativeWindowCloseMessage(message, msg->msg.win.wParam)) {
+        return true;
+    }
+
     if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) {
         if (isTouchpadCtrlFallbackActive() &&
                 (LOWORD(msg->msg.win.wParam) & MK_CONTROL) &&
