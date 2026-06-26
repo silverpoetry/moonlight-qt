@@ -1414,6 +1414,24 @@ Flickable {
                 }
 
                 CheckBox {
+                    id: touchpadGesturesCheck
+                    hoverEnabled: true
+                    width: parent.width
+                    visible: SystemProperties.isRunningWindows
+                    text: qsTr("Enable native touchpad gestures")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.enableTouchpadGestures
+                    onCheckedChanged: {
+                        StreamingPreferences.enableTouchpadGestures = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 10000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("When enabled, Moonlight captures Windows precision touchpad gestures and forwards supported pinch and three-finger gestures to the host.")
+                }
+
+                CheckBox {
                     id: swapMouseButtonsCheck
                     hoverEnabled: true
                     width: parent.width

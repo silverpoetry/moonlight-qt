@@ -18,6 +18,7 @@ public:
     // Static properties queried synchronously during the constructor
     Q_PROPERTY(bool isRunningWayland MEMBER isRunningWayland CONSTANT)
     Q_PROPERTY(bool isRunningXWayland MEMBER isRunningXWayland CONSTANT)
+    Q_PROPERTY(bool isRunningWindows MEMBER isRunningWindows CONSTANT)
     Q_PROPERTY(bool isWow64 MEMBER isWow64 CONSTANT)
     Q_PROPERTY(QString friendlyNativeArchName MEMBER friendlyNativeArchName CONSTANT)
     Q_PROPERTY(bool hasDesktopEnvironment MEMBER hasDesktopEnvironment CONSTANT)
@@ -59,6 +60,7 @@ private:
     // Properties set by the constructor
     bool isRunningWayland;
     bool isRunningXWayland;
+    bool isRunningWindows;
     bool isWow64;
     QString friendlyNativeArchName;
     bool hasDesktopEnvironment;

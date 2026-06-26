@@ -165,7 +165,7 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         return;
     }
 
-    if (m_TouchpadSuppressWheelUntil != 0) {
+    if (m_EnableTouchpadGestures && m_TouchpadSuppressWheelUntil != 0) {
         const Sint32 remainingMs = static_cast<Sint32>(m_TouchpadSuppressWheelUntil - SDL_GetTicks());
         if (remainingMs > 0) {
             return;
@@ -174,7 +174,7 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         m_TouchpadSuppressWheelUntil = 0;
     }
 
-    if (m_TouchpadSuppressNextCtrlWheel) {
+    if (m_EnableTouchpadGestures && m_TouchpadSuppressNextCtrlWheel) {
         m_TouchpadSuppressNextCtrlWheel = false;
         if (m_TouchpadSuppressCtrlWheelUntil != 0) {
             const Sint32 remainingMs = static_cast<Sint32>(m_TouchpadSuppressCtrlWheelUntil - SDL_GetTicks());
@@ -184,7 +184,8 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         }
     }
 
-    if (isTouchpadCtrlFallbackActive() &&
+    if (m_EnableTouchpadGestures &&
+            isTouchpadCtrlFallbackActive() &&
             (SDL_GetModState() & KMOD_CTRL) &&
             m_TouchpadSuppressCtrlWheelUntil != 0) {
         const Sint32 remainingMs = static_cast<Sint32>(m_TouchpadSuppressCtrlWheelUntil - SDL_GetTicks());

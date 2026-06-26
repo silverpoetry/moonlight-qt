@@ -28,6 +28,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_StreamHeight(streamHeight),
       m_AbsoluteMouseMode(prefs.absoluteMouseMode),
       m_AbsoluteTouchMode(prefs.absoluteTouchMode),
+      m_EnableTouchpadGestures(prefs.enableTouchpadGestures),
       m_DisabledTouchFeedback(false),
       m_LeftButtonReleaseTimer(0),
       m_RightButtonReleaseTimer(0),
@@ -282,8 +283,10 @@ SdlInputHandler::~SdlInputHandler()
 void SdlInputHandler::setWindow(SDL_Window *window)
 {
     m_Window = window;
-    registerTouchpadWindow();
-    registerTouchpadGlobalGestures();
+    if (m_EnableTouchpadGestures) {
+        registerTouchpadWindow();
+        registerTouchpadGlobalGestures();
+    }
 }
 
 void SdlInputHandler::raiseAllKeys()
@@ -379,7 +382,7 @@ void SdlInputHandler::updateKeyboardGrabState()
 #endif
 
     m_KeyboardCaptureActive = shouldGrab;
-    updateTouchpadGlobalGesturesEnabled(shouldGrab);
+    updateTouchpadGlobalGesturesEnabled(m_EnableTouchpadGestures && shouldGrab);
 }
 
 bool SdlInputHandler::isSystemKeyCaptureActive()

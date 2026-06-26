@@ -122,6 +122,7 @@ public:
     Q_PROPERTY(bool quitAppAfter MEMBER quitAppAfter NOTIFY quitAppAfterChanged)
     Q_PROPERTY(bool absoluteMouseMode MEMBER absoluteMouseMode NOTIFY absoluteMouseModeChanged)
     Q_PROPERTY(bool absoluteTouchMode MEMBER absoluteTouchMode NOTIFY absoluteTouchModeChanged)
+    Q_PROPERTY(bool enableTouchpadGestures MEMBER enableTouchpadGestures NOTIFY enableTouchpadGesturesChanged)
     Q_PROPERTY(bool framePacing MEMBER framePacing NOTIFY framePacingChanged)
     Q_PROPERTY(bool connectionWarnings MEMBER connectionWarnings NOTIFY connectionWarningsChanged)
     Q_PROPERTY(bool configurationWarnings MEMBER configurationWarnings NOTIFY configurationWarningsChanged)
@@ -164,6 +165,7 @@ public:
     bool quitAppAfter;
     bool absoluteMouseMode;
     bool absoluteTouchMode;
+    bool enableTouchpadGestures;
     bool framePacing;
     bool connectionWarnings;
     bool configurationWarnings;
@@ -204,6 +206,7 @@ signals:
     void quitAppAfterChanged();
     void absoluteMouseModeChanged();
     void absoluteTouchModeChanged();
+    void enableTouchpadGesturesChanged();
     void audioConfigChanged();
     void videoCodecConfigChanged();
     void enableHdrChanged();

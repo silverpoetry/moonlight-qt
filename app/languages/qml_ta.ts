@@ -208,7 +208,7 @@
 <context>
     <name>NvHTTP</name>
     <message>
-        <location filename="../backend/nvhttp.cpp" line="357"/>
+        <location filename="../backend/nvhttp.cpp" line="372"/>
         <source>Missing audio capture device. Reinstalling GeForce Experience should resolve this error.</source>
         <translation>ஆடியோ பிடிப்பு சாதனம் காணவில்லை. சியிபோர்ச் அனுபவத்தை மீண்டும் நிறுவுவது இந்த பிழையை தீர்க்க வேண்டும்.</translation>
     </message>
@@ -427,27 +427,27 @@
 <context>
     <name>QPlatformTheme</name>
     <message>
-        <location filename="../main.cpp" line="838"/>
+        <location filename="../main.cpp" line="890"/>
         <source>&amp;Yes</source>
         <translation>&amp;ஆம்</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="839"/>
+        <location filename="../main.cpp" line="891"/>
         <source>&amp;No</source>
         <translation>&amp;இல்லை</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="840"/>
+        <location filename="../main.cpp" line="892"/>
         <source>OK</source>
         <translation>சரி</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="841"/>
+        <location filename="../main.cpp" line="893"/>
         <source>Help</source>
         <translation>உதவி</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="842"/>
+        <location filename="../main.cpp" line="894"/>
         <source>Cancel</source>
         <translation>ரத்துசெய்</translation>
     </message>
@@ -463,57 +463,57 @@
 <context>
     <name>Session</name>
     <message>
-        <location filename="../streaming/session.cpp" line="104"/>
+        <location filename="../streaming/session.cpp" line="184"/>
         <source>No video received from host.</source>
         <translation>ஓச்டிலிருந்து எந்த வீடியோவும் பெறப்படவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="105"/>
+        <location filename="../streaming/session.cpp" line="185"/>
         <source>Check your firewall and port forwarding rules for port(s): %1</source>
         <translation>துறைமுகம் (கள்) க்கான உங்கள் ஃபயர்வால் மற்றும் துறைமுகம் பகிர்தல் விதிகளை சரிபார்க்கவும்: %1</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="110"/>
+        <location filename="../streaming/session.cpp" line="190"/>
         <source>Your network connection isn&apos;t performing well. Reduce your video bitrate setting or try a faster connection.</source>
         <translation>உங்கள் பிணைய இணைப்பு சிறப்பாக செயல்படவில்லை. உங்கள் வீடியோ பிட்ரேட் அமைப்பைக் குறைக்கவும் அல்லது வேகமான இணைப்பை முயற்சிக்கவும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="116"/>
+        <location filename="../streaming/session.cpp" line="196"/>
         <source>Something went wrong on your host PC when starting the stream.</source>
         <translation>ச்ட்ரீமைத் தொடங்கும்போது உங்கள் புரவலன் கணினியில் ஏதோ தவறு ஏற்பட்டது.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="117"/>
+        <location filename="../streaming/session.cpp" line="197"/>
         <source>Make sure you don&apos;t have any DRM-protected content open on your host PC. You can also try restarting your host PC.</source>
         <translation>உங்கள் புரவலன் கணினியில் டி.ஆர்.எம்-பாதுகாக்கப்பட்ட உள்ளடக்கம் திறக்கப்படவில்லை என்பதை உறுதிப்படுத்திக் கொள்ளுங்கள். உங்கள் புரவலன் கணினியை மறுதொடக்கம் செய்ய முயற்சி செய்யலாம்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="122"/>
+        <location filename="../streaming/session.cpp" line="202"/>
         <source>The host PC reported a fatal video encoding error.</source>
         <translation>புரவலன் பிசி ஒரு அபாயகரமான வீடியோ குறியீட்டு பிழையை அறிவித்தது.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="123"/>
+        <location filename="../streaming/session.cpp" line="203"/>
         <source>Try disabling HDR mode, changing the streaming resolution, or changing your host PC&apos;s display resolution.</source>
         <translation>எச்டிஆர் பயன்முறையை முடக்க முயற்சிக்கவும், ச்ட்ரீமிங் தீர்மானத்தை மாற்றவும் அல்லது உங்கள் புரவலன் கணினியின் காட்சி தெளிவுத்திறனை மாற்றவும் முயற்சிக்கவும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="131"/>
+        <location filename="../streaming/session.cpp" line="211"/>
         <source>Connection terminated</source>
         <translation>இணைப்பு நிறுத்தப்பட்டது</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="132"/>
+        <location filename="../streaming/session.cpp" line="212"/>
         <source>Error code: %1</source>
         <translation>பிழை குறியீடு: %1</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="952"/>
+        <location filename="../streaming/session.cpp" line="1411"/>
         <source>The version of GeForce Experience on %1 is not supported by this build of Moonlight. You must update Moonlight to stream from %1.</source>
         <translation>%1 இல் உள்ள சியிபோர்ச் அனுபவத்தின் பதிப்பு இந்த நிலவொளியால் ஆதரிக்கப்படவில்லை. %1 இலிருந்து ச்ட்ரீம் செய்ய நீங்கள் நிலவொளியைப் புதுப்பிக்க வேண்டும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="957"/>
+        <location filename="../streaming/session.cpp" line="1416"/>
         <source>Your selection to enable remote desktop mouse mode may cause problems in games.</source>
         <translation>தொலைநிலை டெச்க்டாப் மவுச் பயன்முறையை இயக்குவதற்கான உங்கள் தேர்வு விளையாட்டுகளில் சிக்கல்களை ஏற்படுத்தக்கூடும்.</translation>
     </message>
@@ -522,148 +522,148 @@
         <translation type="vanished">HDR wird nicht von Software Dekodierung unterstützt.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="961"/>
+        <location filename="../streaming/session.cpp" line="1420"/>
         <source>Your settings selection to force software decoding may cause poor streaming performance.</source>
         <translation>மென்பொருள் டிகோடிங்கை கட்டாயப்படுத்த உங்கள் அமைப்புகள் தேர்வு மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="997"/>
+        <location filename="../streaming/session.cpp" line="1456"/>
         <source>Your host PC doesn&apos;t support encoding HEVC.</source>
         <translation>உங்கள் புரவலன் பிசி குறியீட்டு HEVC ஐ ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1015"/>
+        <location filename="../streaming/session.cpp" line="1474"/>
         <source>Using software decoding due to your selection to force HEVC without GPU support. This may cause poor streaming performance.</source>
         <translation>சி.பீ.யூ உதவி இல்லாமல் HEVC ஐ கட்டாயப்படுத்த உங்கள் தேர்வு காரணமாக மென்பொருள் டிகோடிங்கைப் பயன்படுத்துதல். இது மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="967"/>
+        <location filename="../streaming/session.cpp" line="1426"/>
         <source>Your host software or GPU doesn&apos;t support encoding AV1.</source>
         <translation>உங்கள் புரவலன் மென்பொருள் அல்லது சி.பீ.யூ குறியீட்டு ஏ.வி 1 ஐ ஆதரிக்காது.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="985"/>
+        <location filename="../streaming/session.cpp" line="1444"/>
         <source>Using software decoding due to your selection to force AV1 without GPU support. This may cause poor streaming performance.</source>
         <translation>சி.பீ.யூ உதவி இல்லாமல் ஏ.வி 1 ஐ கட்டாயப்படுத்த உங்கள் தேர்வு காரணமாக மென்பொருள் டிகோடிங்கைப் பயன்படுத்துதல். இது மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1062"/>
+        <location filename="../streaming/session.cpp" line="1521"/>
         <source>Your host PC doesn&apos;t support HDR streaming.</source>
         <translation>உங்கள் புரவலன் பிசி எச்டிஆர் ச்ட்ரீமிங்கை ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1054"/>
+        <location filename="../streaming/session.cpp" line="1513"/>
         <source>HDR is not supported using the H.264 codec.</source>
         <translation>H.264 கோடெக்கைப் பயன்படுத்தி HDR ஆதரிக்கப்படவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1077"/>
+        <location filename="../streaming/session.cpp" line="1536"/>
         <source>This PC&apos;s GPU doesn&apos;t support AV1 Main10 decoding for HDR streaming.</source>
         <translation>இந்த கணினியின் சி.பீ.யூ எச்டிஆர் ச்ட்ரீமிங்கிற்கான ஏ.வி 1 மெயின் 10 டிகோடிங்கை ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1058"/>
+        <location filename="../streaming/session.cpp" line="1517"/>
         <source>This PC&apos;s GPU doesn&apos;t support 10-bit HEVC or AV1 decoding for HDR streaming.</source>
         <translation>இந்த கணினியின் சி.பீ.யூ எச்டிஆர் ச்ட்ரீமிங்கிற்கான 10-பிட் எவிசி அல்லது ஏ.வி 1 டிகோடிங்கை ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1110"/>
+        <location filename="../streaming/session.cpp" line="1569"/>
         <source>Your host PC and client PC don&apos;t support the same HDR video codecs.</source>
         <translation>உங்கள் புரவலன் பிசி மற்றும் வாங்கி பிசி அதே எச்டிஆர் வீடியோ கோடெக்குகளை ஆதரிக்காது.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1203"/>
+        <location filename="../streaming/session.cpp" line="1674"/>
         <source>Video resolutions over 4K are not supported by the H.264 codec.</source>
         <translation>4K க்கு மேல் வீடியோ தீர்மானங்கள் H.264 கோடெக்கால் ஆதரிக்கப்படவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1600"/>
+        <location filename="../streaming/session.cpp" line="2105"/>
         <source>Host returned error: %1</source>
         <translation>புரவலன் திரும்பிய பிழை: %1</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1034"/>
+        <location filename="../streaming/session.cpp" line="1493"/>
         <source>Using software decoding due to your selection to force H.264 without GPU support. This may cause poor streaming performance.</source>
         <translation>சி.பீ.யூ உதவி இல்லாமல் H.264 ஐ கட்டாயப்படுத்த உங்கள் தேர்வு காரணமாக மென்பொருள் டிகோடிங்கைப் பயன்படுத்துதல். இது மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1044"/>
+        <location filename="../streaming/session.cpp" line="1503"/>
         <source>Your host PC and client PC don&apos;t support the same video codecs. This may cause poor streaming performance.</source>
         <translation>உங்கள் புரவலன் பிசி மற்றும் வாங்கி பிசி அதே வீடியோ கோடெக்குகளை ஆதரிக்காது. இது மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1047"/>
+        <location filename="../streaming/session.cpp" line="1506"/>
         <source>Your client GPU doesn&apos;t support H.264 decoding. This may cause poor streaming performance.</source>
         <translation>உங்கள் கிளையன்ட் சி.பீ.யூ எச் .264 டிகோடிங்கை ஆதரிக்கவில்லை. இது மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1083"/>
-        <location filename="../streaming/session.cpp" line="1101"/>
+        <location filename="../streaming/session.cpp" line="1542"/>
+        <location filename="../streaming/session.cpp" line="1560"/>
         <source>Using software decoding due to your selection to force HDR without GPU support. This may cause poor streaming performance.</source>
         <translation>சி.பீ.யூ உதவி இல்லாமல் எச்.டி.ஆரை கட்டாயப்படுத்த உங்கள் தேர்வு காரணமாக மென்பொருள் டிகோடிங்கைப் பயன்படுத்துதல். இது மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1095"/>
+        <location filename="../streaming/session.cpp" line="1554"/>
         <source>This PC&apos;s GPU doesn&apos;t support HEVC Main10 decoding for HDR streaming.</source>
         <translation>இந்த கணினியின் சி.பீ.யூ எச்.டி.ஆர் ச்ட்ரீமிங்கிற்கான HEVC மெயின் 10 டிகோடிங்கை ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1117"/>
+        <location filename="../streaming/session.cpp" line="1576"/>
         <source>Your host PC doesn&apos;t support YUV 4:4:4 streaming.</source>
         <translation>உங்கள் புரவலன் பிசி YUV 4:4:4 ச்ட்ரீமிங்கை ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1125"/>
+        <location filename="../streaming/session.cpp" line="1584"/>
         <source>Your host PC doesn&apos;t support YUV 4:4:4 streaming for selected video codec.</source>
         <translation>தேர்ந்தெடுக்கப்பட்ட வீடியோ கோடெக்கிற்கான உங்கள் புரவலன் பிசி YUV 4:4:4 ச்ட்ரீமிங்கை ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1140"/>
+        <location filename="../streaming/session.cpp" line="1599"/>
         <source>Using software decoding due to your selection to force YUV 4:4:4 without GPU support. This may cause poor streaming performance.</source>
         <translation>சி.பீ.யூ உதவி இல்லாமல் YUV 4:4:4 ஐ கட்டாயப்படுத்த உங்கள் தேர்வு காரணமாக மென்பொருள் டிகோடிங்கைப் பயன்படுத்துதல். இது மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1146"/>
+        <location filename="../streaming/session.cpp" line="1605"/>
         <source>This PC&apos;s GPU doesn&apos;t support YUV 4:4:4 decoding for selected video codec.</source>
         <translation>இந்தக் கணினியின் சி.பீ.யூ YUV 4:4:4 தேர்ந்தெடுக்கப்பட்ட வீடியோ கோடெக்கிற்கான டிகோடிங்கை ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1155"/>
+        <location filename="../streaming/session.cpp" line="1614"/>
         <source>GeForce Experience 3.0 or higher is required for 4K streaming.</source>
         <translation>4K ச்ட்ரீமிங்கிற்கு சியிபோர்ச் பட்டறிவு 3.0 அல்லது அதற்கு மேற்பட்டது தேவை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1170"/>
+        <location filename="../streaming/session.cpp" line="1641"/>
         <source>Your selected surround sound setting is not supported by the current audio device.</source>
         <translation>நீங்கள் தேர்ந்தெடுக்கப்பட்ட சரவுண்ட் ஒலி அமைப்பை தற்போதைய ஆடியோ சாதனத்தால் ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1176"/>
+        <location filename="../streaming/session.cpp" line="1647"/>
         <source>Failed to open audio device. Audio will be unavailable during this session.</source>
         <translation>ஆடியோ சாதனத்தைத் திறக்கத் தவறிவிட்டது. இந்த அமர்வின் போது ஆடியோ கிடைக்காது.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1181"/>
+        <location filename="../streaming/session.cpp" line="1652"/>
         <source>An attached gamepad has no mapping and won&apos;t be usable. Visit the Moonlight help to resolve this.</source>
         <translation>இணைக்கப்பட்ட கேம்பேடிற்கு மேப்பிங் இல்லை, பயன்படுத்தக்கூடியதாக இருக்காது. இதைத் தீர்க்க மூன்லைட் உதவியைப் பார்வையிடவும்.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1199"/>
+        <location filename="../streaming/session.cpp" line="1670"/>
         <source>Your host PC&apos;s GPU doesn&apos;t support streaming video resolutions over 4K.</source>
         <translation>உங்கள் புரவலன் கணினியின் சி.பீ.யூ 4K க்கு மேல் ச்ட்ரீமிங் வீடியோ தீர்மானங்களை ஆதரிக்கவில்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1217"/>
+        <location filename="../streaming/session.cpp" line="1688"/>
         <source>Your selection to force hardware decoding cannot be satisfied due to missing hardware decoding support on this PC&apos;s GPU.</source>
         <translation>இந்த கணினியின் சி.பீ.யுவில் வன்பொருள் டிகோடிங் ஆதரவைக் காணவில்லை என்பதால் வன்பொருள் டிகோடிங்கை கட்டாயப்படுத்துவதற்கான உங்கள் தேர்வை திருப்திப்படுத்த முடியாது.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="1220"/>
+        <location filename="../streaming/session.cpp" line="1691"/>
         <source>Your codec selection and force hardware decoding setting are not compatible. This PC&apos;s GPU lacks support for decoding your chosen codec.</source>
         <translation>உங்கள் கோடெக் தேர்வு மற்றும் படை வன்பொருள் டிகோடிங் அமைப்பு பொருந்தாது. இந்த கணினியின் சி.பீ.யுவின் நீங்கள் தேர்ந்தெடுத்த கோடெக்கை டிகோடிங் செய்வதற்கான உதவி இல்லை.</translation>
     </message>
     <message>
-        <location filename="../streaming/session.cpp" line="2198"/>
+        <location filename="../streaming/session.cpp" line="2784"/>
         <source>Unable to initialize video decoder. Please check your streaming settings and try again.</source>
         <translation>வீடியோ டிகோடரை துவக்க முடியவில்லை. உங்கள் ச்ட்ரீமிங் அமைப்புகளை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.</translation>
     </message>
@@ -893,9 +893,18 @@
         <translation>உள்ளீட்டு அமைப்புகள்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1319"/>
+        <location filename="../gui/SettingsView.qml" line="1776"/>
+        <source>Enable file logging</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1786"/>
+        <source>Create Moonlight log files for troubleshooting. Leave this off during normal use to avoid extra disk writes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This enables seamless mouse control without capturing the client&apos;s mouse cursor. It is ideal for remote desktop usage but will not work in most games.</source>
-        <translation>இது வாடிக்கையாளரின் மவுச் கர்சரைக் கைப்பற்றாமல் தடையற்ற சுட்டி கட்டுப்பாட்டை செயல்படுத்துகிறது. தொலைநிலை டெச்க்டாப் பயன்பாட்டிற்கு இது ஏற்றது, ஆனால் பெரும்பாலான விளையாட்டுகளில் வேலை செய்யாது.</translation>
+        <translation type="vanished">இது வாடிக்கையாளரின் மவுச் கர்சரைக் கைப்பற்றாமல் தடையற்ற சுட்டி கட்டுப்பாட்டை செயல்படுத்துகிறது. தொலைநிலை டெச்க்டாப் பயன்பாட்டிற்கு இது ஏற்றது, ஆனால் பெரும்பாலான விளையாட்டுகளில் வேலை செய்யாது.</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1321"/>
@@ -907,37 +916,37 @@
         <translation type="vanished">Das Aktivieren von HDR überschreibt die manuelle Decoder-Auswahl.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1636"/>
+        <location filename="../gui/SettingsView.qml" line="1654"/>
         <source>Enable HDR (Experimental)</source>
         <translation>HDR ஐ இயக்கவும் (சோதனை)</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1651"/>
+        <location filename="../gui/SettingsView.qml" line="1669"/>
         <source>The stream will be HDR-capable, but some games may require an HDR monitor on your host PC to enable HDR mode.</source>
         <translation>ச்ட்ரீம் எச்டிஆர்-திறன் கொண்டதாக இருக்கும், ஆனால் சில விளையாட்டுகளுக்கு எச்டிஆர் பயன்முறையை இயக்க உங்கள் புரவலன் கணினியில் எச்டிஆர் மானிட்டர் தேவைப்படலாம்.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1653"/>
+        <location filename="../gui/SettingsView.qml" line="1671"/>
         <source>HDR streaming is not supported on this PC.</source>
         <translation>இந்த கணினியில் எச்டிஆர் ச்ட்ரீமிங் ஆதரிக்கப்படவில்லை.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1740"/>
+        <location filename="../gui/SettingsView.qml" line="1758"/>
         <source>Show performance stats while streaming</source>
         <translation>ச்ட்ரீமிங் செய்யும் போது செயல்திறன் புள்ளிவிவரங்களைக் காட்டு</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1750"/>
+        <location filename="../gui/SettingsView.qml" line="1768"/>
         <source>Display real-time stream performance information while streaming.</source>
         <translation>ச்ட்ரீமிங் செய்யும் போது நிகழ்நேர ச்ட்ரீம் செயல்திறன் தகவலைக் காண்பி.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1751"/>
+        <location filename="../gui/SettingsView.qml" line="1769"/>
         <source>You can toggle it at any time while streaming using Ctrl+Alt+Shift+S or Select+L1+R1+X.</source>
         <translation>Ctrl+Alt+Shift+S ஐப் பயன்படுத்தி ச்ட்ரீமிங் செய்யும் போது எந்த நேரத்திலும் அதை மாற்றலாம் அல்லது+L1+R1+X ஐத் தேர்ந்தெடுக்கலாம்.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1752"/>
+        <location filename="../gui/SettingsView.qml" line="1770"/>
         <source>The performance overlay is not supported on Steam Link or Raspberry Pi.</source>
         <translation>செயல்திறன் மேலடுக்கு நீராவி இணைப்பு அல்லது ராச்பெர்ரி பையில் ஆதரிக்கப்படவில்லை.</translation>
     </message>
@@ -952,37 +961,37 @@
         <translation>தொடுதிரையை மெய்நிகர் டிராக்பேடாகப் பயன்படுத்தவும்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1420"/>
+        <location filename="../gui/SettingsView.qml" line="1438"/>
         <source>Swap left and right mouse buttons</source>
         <translation>இடது மற்றும் வலது சுட்டி பொத்தான்களை மாற்றவும்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1432"/>
+        <location filename="../gui/SettingsView.qml" line="1450"/>
         <source>Reverse mouse scrolling direction</source>
         <translation>தலைகீழ் சுட்டி ச்க்ரோலிங் திசை</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1446"/>
+        <location filename="../gui/SettingsView.qml" line="1464"/>
         <source>Gamepad Settings</source>
         <translation>கேம்பேட் அமைப்புகள்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1456"/>
+        <location filename="../gui/SettingsView.qml" line="1474"/>
         <source>Swap A/B and X/Y gamepad buttons</source>
         <translation>A/B மற்றும் X/y கேம்பேட் பொத்தான்களை மாற்றவும்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1466"/>
+        <location filename="../gui/SettingsView.qml" line="1484"/>
         <source>This switches gamepads into a Nintendo-style button layout</source>
         <translation>இது கேம்பேட்களை நிண்டெண்டோ-பாணி பொத்தானை அமைப்பாக மாற்றுகிறது</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1472"/>
+        <location filename="../gui/SettingsView.qml" line="1490"/>
         <source>Force gamepad #1 always connected</source>
         <translation>கேம்பேட் #1 எப்போதும் இணைக்கப்பட்டுள்ளது</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1482"/>
+        <location filename="../gui/SettingsView.qml" line="1500"/>
         <source>Forces a single gamepad to always stay connected to the host, even if no gamepads are actually connected to this PC.</source>
         <translation>இந்த கணினியுடன் உண்மையில் கேம்பேடுகள் எதுவும் இணைக்கப்படாவிட்டாலும், ஓச்டுடன் எப்போதும் இணைந்திருக்க ஒரு கேம்பேடை கட்டாயப்படுத்துகிறது.</translation>
     </message>
@@ -992,17 +1001,17 @@
         <translation>Ctrl+Alt+Shift+M ஐப் பயன்படுத்தி ச்ட்ரீமிங் செய்யும் போது இதை மாற்றலாம்.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1490"/>
+        <location filename="../gui/SettingsView.qml" line="1508"/>
         <source>Enable mouse control with gamepads by holding the &apos;Start&apos; button</source>
         <translation>&apos;தொடக்க&apos; பொத்தானை வைத்திருப்பதன் மூலம் கேம்பேடுகளுடன் சுட்டி கட்டுப்பாட்டை இயக்கவும்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1501"/>
+        <location filename="../gui/SettingsView.qml" line="1519"/>
         <source>Process gamepad input when Moonlight is in the background</source>
         <translation>மூன்லைட் பின்னணியில் இருக்கும்போது கேம்பேட் உள்ளீட்டை செயலாக்குங்கள்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1512"/>
+        <location filename="../gui/SettingsView.qml" line="1530"/>
         <source>Allows Moonlight to capture gamepad inputs even if it&apos;s not the current window in focus</source>
         <translation>கேம்பேட் உள்ளீடுகளை மையமாக இல்லாவிட்டாலும் கூட மூன்லைட் அனுமதிக்கிறது</translation>
     </message>
@@ -1012,7 +1021,7 @@
         <translation>புரவலன் அமைப்புகள்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1521"/>
+        <location filename="../gui/SettingsView.qml" line="1539"/>
         <source>Advanced Settings</source>
         <translation>மேம்பட்ட அமைப்புகள்</translation>
     </message>
@@ -1037,7 +1046,7 @@
         <translation>நீங்கள் ச்ட்ரீமிங் செய்யும் விளையாட்டின் பெயரைக் காட்ட உங்கள் முரண்பாடு நிலையைப் புதுப்பிக்கிறது.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1483"/>
+        <location filename="../gui/SettingsView.qml" line="1501"/>
         <source>Only enable this option when streaming a game that doesn&apos;t support gamepads being connected after startup.</source>
         <translation>தொடக்கத்திற்குப் பிறகு கேம்பேடுகள் இணைக்கப்படுவதை ஆதரிக்காத ஒரு விளையாட்டை ச்ட்ரீமிங் செய்யும் போது மட்டுமே இந்த விருப்பத்தை இயக்கவும்.</translation>
     </message>
@@ -1125,78 +1134,93 @@
         <translation>இது உங்கள் ச்ட்ரீமை முடிக்கும்போது நீங்கள் ச்ட்ரீமிங் செய்யும் பயன்பாடு அல்லது விளையாட்டை மூடும். நீங்கள் சேமிக்கப்படாத முன்னேற்றத்தை இழப்பீர்கள்!</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1531"/>
+        <location filename="../gui/SettingsView.qml" line="1319"/>
+        <source>This enables seamless mouse control without capturing the client&apos;s mouse cursor. If the host supports native cursor streaming, Moonlight will draw the host cursor locally for lower cursor latency.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1421"/>
+        <source>Enable native touchpad gestures</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1431"/>
+        <source>When enabled, Moonlight captures Windows precision touchpad gestures and forwards supported pinch and three-finger gestures to the host.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1549"/>
         <source>Video decoder</source>
         <translation>வீடியோ டிகோடர்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1556"/>
-        <location filename="../gui/SettingsView.qml" line="1609"/>
+        <location filename="../gui/SettingsView.qml" line="1574"/>
+        <location filename="../gui/SettingsView.qml" line="1627"/>
         <source>Automatic (Recommended)</source>
         <translation>தானியங்கி (பரிந்துரைக்கப்படுகிறது)</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1560"/>
+        <location filename="../gui/SettingsView.qml" line="1578"/>
         <source>Force software decoding</source>
         <translation>மென்பொருள் டிகோடிங்கை கட்டாயப்படுத்துங்கள்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1564"/>
+        <location filename="../gui/SettingsView.qml" line="1582"/>
         <source>Force hardware decoding</source>
         <translation>வன்பொருள் டிகோடிங்கை கட்டாயப்படுத்துங்கள்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1579"/>
+        <location filename="../gui/SettingsView.qml" line="1597"/>
         <source>Video codec</source>
         <translation>வீடியோ கோடெக்</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1613"/>
+        <location filename="../gui/SettingsView.qml" line="1631"/>
         <source>H.264</source>
         <translation>H.264</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1617"/>
+        <location filename="../gui/SettingsView.qml" line="1635"/>
         <source>HEVC (H.265)</source>
         <translation>HEVC (H.265)</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1621"/>
+        <location filename="../gui/SettingsView.qml" line="1639"/>
         <source>AV1 (Experimental)</source>
         <translation>ஏ.வி 1 (சோதனை)</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1659"/>
+        <location filename="../gui/SettingsView.qml" line="1677"/>
         <source>Enable YUV 4:4:4 (Experimental)</source>
         <translation>YUV 4:4:4 ஐ இயக்கவும் (சோதனை)</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1681"/>
+        <location filename="../gui/SettingsView.qml" line="1699"/>
         <source>Good for streaming desktop and text-heavy games, but not recommended for fast-paced games.</source>
         <translation>டெச்க்டாப் மற்றும் உரை-கனமான விளையாட்டுகளை ச்ட்ரீமிங் செய்வது நல்லது, ஆனால் வேகமான விளையாட்டுகளுக்கு பரிந்துரைக்கப்படவில்லை.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1683"/>
+        <location filename="../gui/SettingsView.qml" line="1701"/>
         <source>YUV 4:4:4 is not supported on this PC.</source>
         <translation>YUV 4:4:4 இந்தக் கணினியில் ஆதரிக்கப்படவில்லை.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1689"/>
+        <location filename="../gui/SettingsView.qml" line="1707"/>
         <source>Unlock bitrate limit (Experimental)</source>
         <translation>பிட்ரேட் வரம்பைத் திறக்கவும் (சோதனை)</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1702"/>
+        <location filename="../gui/SettingsView.qml" line="1720"/>
         <source>This unlocks extremely high video bitrates for use with Sunshine hosts. It should only be used when streaming over an Ethernet LAN connection.</source>
         <translation>இது சன்சைன் ஓச்ட்களுடன் பயன்படுத்த மிக உயர்ந்த வீடியோ பிட்ரேட்டுகளை திறக்கிறது. ஈத்தர்நெட் லேன் இணைப்பு வழியாக ச்ட்ரீமிங் செய்யும் போது மட்டுமே இது பயன்படுத்தப்பட வேண்டும்.</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1708"/>
+        <location filename="../gui/SettingsView.qml" line="1726"/>
         <source>Automatically find PCs on the local network (Recommended)</source>
         <translation>உள்ளக நெட்வொர்க்கில் பிசிக்களை தானாகவே கண்டறியவும் (பரிந்துரைக்கப்படுகிறது)</translation>
     </message>
     <message>
-        <location filename="../gui/SettingsView.qml" line="1729"/>
+        <location filename="../gui/SettingsView.qml" line="1747"/>
         <source>Automatically detect blocked connections (Recommended)</source>
         <translation>தடுக்கப்பட்ட இணைப்புகளை தானாக கண்டறியவும் (பரிந்துரைக்கப்படுகிறது)</translation>
     </message>
@@ -1204,48 +1228,49 @@
 <context>
     <name>StreamSegue</name>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="12"/>
+        <location filename="../gui/StreamSegue.qml" line="14"/>
+        <location filename="../gui/StreamSegue.qml" line="96"/>
         <source>Resuming %1...</source>
         <translation>%1 ஐ மீண்டும் தொடங்குகிறது ...</translation>
     </message>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="13"/>
-        <location filename="../gui/StreamSegue.qml" line="20"/>
+        <location filename="../gui/StreamSegue.qml" line="15"/>
+        <location filename="../gui/StreamSegue.qml" line="41"/>
         <source>Starting %1...</source>
         <translation>தொடங்கி %1 ...</translation>
     </message>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="26"/>
+        <location filename="../gui/StreamSegue.qml" line="47"/>
         <source>Starting %1 failed: Error %2</source>
         <translation>ஆரம்ப %1 தோல்வியுற்றது: பிழை %2</translation>
     </message>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="29"/>
+        <location filename="../gui/StreamSegue.qml" line="50"/>
         <source>Check your firewall and port forwarding rules for port(s): %1</source>
         <translation>துறைமுகம் (கள்) க்கான உங்கள் ஃபயர்வால் மற்றும் துறைமுகம் பகிர்தல் விதிகளை சரிபார்க்கவும்: %1</translation>
     </message>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="65"/>
+        <location filename="../gui/StreamSegue.qml" line="112"/>
         <source>This PC&apos;s Internet connection is blocking Moonlight. Streaming over the Internet may not work while connected to this network.</source>
         <translation>இந்த கணினியின் இணைய இணைப்பு நிலவொளியைத் தடுக்கிறது. இந்த பிணையத்துடன் இணைக்கப்படும்போது இணையத்தில் ச்ட்ரீமிங் வேலை செய்யாது.</translation>
     </message>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="168"/>
+        <location filename="../gui/StreamSegue.qml" line="272"/>
         <source>Tip:</source>
         <translation>உதவிக்குறிப்பு:</translation>
     </message>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="168"/>
+        <location filename="../gui/StreamSegue.qml" line="272"/>
         <source>Press %1 to disconnect your session</source>
         <translation>உங்கள் அமர்வை துண்டிக்க %1 ஐ அழுத்தவும்</translation>
     </message>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="169"/>
+        <location filename="../gui/StreamSegue.qml" line="273"/>
         <source>Start+Select+L1+R1</source>
         <translation>தொடக்க+தேர்ந்தெடுக்கவும்+L1+R1</translation>
     </message>
     <message>
-        <location filename="../gui/StreamSegue.qml" line="169"/>
+        <location filename="../gui/StreamSegue.qml" line="273"/>
         <source>Ctrl+Alt+Shift+Q</source>
         <translation>Ctrl+alt+shift+q</translation>
     </message>
@@ -1253,82 +1278,82 @@
 <context>
     <name>main</name>
     <message>
-        <location filename="../gui/main.qml" line="444"/>
+        <location filename="../gui/main.qml" line="495"/>
         <source>Settings</source>
         <translation>அமைப்புகள்</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="291"/>
+        <location filename="../gui/main.qml" line="342"/>
         <source>Version %1</source>
         <translation>பதிப்பு %1</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="307"/>
+        <location filename="../gui/main.qml" line="358"/>
         <source>Join our community on Discord</source>
         <translation>முரண்பாட்டில் எங்கள் சமூகத்தில் சேரவும்</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="326"/>
+        <location filename="../gui/main.qml" line="377"/>
         <source>Add PC manually</source>
         <translation>பிசி கைமுறையாக சேர்க்கவும்</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="366"/>
+        <location filename="../gui/main.qml" line="417"/>
         <source>Update available for Moonlight: Version %1</source>
         <translation>நிலவொளிக்கு புதுப்பிப்பு கிடைக்கிறது: பதிப்பு %1</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="413"/>
+        <location filename="../gui/main.qml" line="464"/>
         <source>Gamepad Mapper</source>
         <translation>கேம்பேட் மேப்பர்</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="459"/>
+        <location filename="../gui/main.qml" line="510"/>
         <source>Hardware acceleration doesn&apos;t work on XWayland. Continuing on XWayland may result in poor streaming performance. Try running with QT_QPA_PLATFORM=wayland or switch to X11.</source>
         <translation>வன்பொருள் முடுக்கம் XWayland இல் வேலை செய்யாது. XWayland இல் தொடர்வது மோசமான ச்ட்ரீமிங் செயல்திறனை ஏற்படுத்தக்கூடும். Qt_qpa_platform = wayland உடன் இயங்க முயற்சிக்கவும் அல்லது x11 க்கு மாறவும்.</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="468"/>
+        <location filename="../gui/main.qml" line="519"/>
         <source>This version of Moonlight isn&apos;t optimized for your PC. Please download the &apos;%1&apos; version of Moonlight for the best streaming performance.</source>
         <translation>மூன்லைட்டின் இந்த பதிப்பு உங்கள் கணினிக்கு உகந்ததாக இல்லை. சிறந்த ச்ட்ரீமிங் செயல்திறனுக்காக மூன்லைட்டின் &apos;%1&apos; பதிப்பைப் பதிவிறக்கவும்.</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="477"/>
+        <location filename="../gui/main.qml" line="528"/>
         <source>Moonlight detected gamepads without a mapping:</source>
         <translation>மேப்பிங் இல்லாமல் மூன்லைட் கேம்பேடுகளைக் கண்டறிந்தது:</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="390"/>
+        <location filename="../gui/main.qml" line="441"/>
         <source>Help</source>
         <translation>உதவி</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="451"/>
+        <location filename="../gui/main.qml" line="502"/>
         <source>No functioning hardware accelerated video decoder was detected by Moonlight. Your streaming performance may be severely degraded in this configuration.</source>
         <translation>செயல்படும் வன்பொருள் முடுக்கப்பட்ட வீடியோ டிகோடர் மூன்லைட் மூலம் கண்டறியப்படவில்லை. இந்த உள்ளமைவில் உங்கள் ச்ட்ரீமிங் செயல்திறன் கடுமையாக சிதைக்கப்படலாம்.</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="453"/>
+        <location filename="../gui/main.qml" line="504"/>
         <source>Click the Help button for more information on solving this problem.</source>
         <translation>இந்த சிக்கலைத் தீர்ப்பது குறித்த கூடுதல் தகவலுக்கு உதவி பொத்தானைக் சொடுக்கு செய்க.</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="461"/>
+        <location filename="../gui/main.qml" line="512"/>
         <source>Click the Help button for more information.</source>
         <translation>மேலும் தகவலுக்கு உதவி பொத்தானைக் சொடுக்கு செய்க.</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="479"/>
+        <location filename="../gui/main.qml" line="530"/>
         <source>Click the Help button for information on how to map your gamepads.</source>
         <translation>உங்கள் கேம்பேட்களை எவ்வாறு வரைபடமாக்குவது என்பது குறித்த தகவலுக்கு உதவி பொத்தானைக் சொடுக்கு செய்க.</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="487"/>
+        <location filename="../gui/main.qml" line="538"/>
         <source>Are you sure you want to quit?</source>
         <translation>நீங்கள் நிச்சயமாக வெளியேற விரும்புகிறீர்களா?</translation>
     </message>
     <message>
-        <location filename="../gui/main.qml" line="517"/>
+        <location filename="../gui/main.qml" line="568"/>
         <source>Enter the IP address of your host PC:</source>
         <translation>உங்கள் புரவலன் கணினியின் ஐபி முகவரியை உள்ளிடவும்:</translation>
     </message>

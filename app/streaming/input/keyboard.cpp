@@ -466,7 +466,7 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         }
     }
 
-    if (keyCode == 0xA2 || keyCode == 0xA3) {
+    if (m_EnableTouchpadGestures && (keyCode == 0xA2 || keyCode == 0xA3)) {
         const int ctrlIndex = keyCode == 0xA2 ? 0 : 1;
         const bool touchpadGestureMaySynthesizeCtrl =
                 m_TouchpadGestureTracking &&

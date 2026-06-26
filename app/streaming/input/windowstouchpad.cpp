@@ -69,7 +69,7 @@ void SdlInputHandler::installWindowsMessageHook(void* hwndValue)
 {
 #ifdef Q_OS_WIN32
     auto hwnd = static_cast<HWND>(hwndValue);
-    if (hwnd == nullptr || m_WindowsMessageHookHwnd == hwnd) {
+    if (!m_EnableTouchpadGestures || hwnd == nullptr || m_WindowsMessageHookHwnd == hwnd) {
         return;
     }
 
@@ -129,6 +129,10 @@ void SdlInputHandler::restoreWindowsMessageHook()
 bool SdlInputHandler::handleNativeTouchpadWheelMessage(unsigned int message, uintptr_t wParam)
 {
 #ifdef Q_OS_WIN32
+    if (!m_EnableTouchpadGestures) {
+        return false;
+    }
+
     if (message != WM_MOUSEWHEEL && message != WM_MOUSEHWHEEL) {
         return false;
     }
@@ -157,7 +161,7 @@ bool SdlInputHandler::handleNativeTouchpadWheelMessage(unsigned int message, uin
 void SdlInputHandler::registerTouchpadWindow()
 {
 #ifdef Q_OS_WIN32
-    if (m_Window == nullptr) {
+    if (!m_EnableTouchpadGestures || m_Window == nullptr) {
         return;
     }
 
@@ -192,6 +196,10 @@ void SdlInputHandler::registerTouchpadWindow()
 bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
 {
 #ifdef Q_OS_WIN32
+    if (!m_EnableTouchpadGestures) {
+        return false;
+    }
+
     if (msg == nullptr || msg->subsystem != SDL_SYSWM_WINDOWS) {
         return false;
     }
@@ -454,6 +462,10 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
 bool SdlInputHandler::isTouchpadCtrlFallbackActive() const
 {
 #ifdef Q_OS_WIN32
+    if (!m_EnableTouchpadGestures) {
+        return false;
+    }
+
     return m_TouchpadGestureTracking ||
             m_TouchpadNativeGestureActive ||
             m_TouchpadSuppressedCtrlDown[0] ||
