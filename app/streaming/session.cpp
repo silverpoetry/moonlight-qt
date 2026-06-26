@@ -134,6 +134,8 @@ struct Session::NativeCursorEvent
     quint16 hotspotX;
     quint16 hotspotY;
     quint32 shapeId;
+    quint32 scaleX;
+    quint32 scaleY;
     QByteArray imageData;
 };
 
@@ -370,6 +372,8 @@ void Session::clNativeCursor(PSS_NATIVE_CURSOR_UPDATE cursorUpdate)
     nativeCursorEvent->hotspotX = cursorUpdate->hotspotX;
     nativeCursorEvent->hotspotY = cursorUpdate->hotspotY;
     nativeCursorEvent->shapeId = cursorUpdate->shapeId;
+    nativeCursorEvent->scaleX = cursorUpdate->scaleX;
+    nativeCursorEvent->scaleY = cursorUpdate->scaleY;
 
     if (cursorUpdate->imageData != nullptr && cursorUpdate->imageSize > 0) {
         nativeCursorEvent->imageData = QByteArray(reinterpret_cast<const char*>(cursorUpdate->imageData),
@@ -398,6 +402,8 @@ void Session::applyNativeCursor(const NativeCursorEvent* cursorEvent)
 
     const quint64 requiredImageBytes = static_cast<quint64>(cursorEvent->width) *
             static_cast<quint64>(cursorEvent->height) * 4;
+    const quint32 scaleX = cursorEvent->scaleX == 0 ? 1u << 16 : cursorEvent->scaleX;
+    const quint32 scaleY = cursorEvent->scaleY == 0 ? 1u << 16 : cursorEvent->scaleY;
 
     if (cursorEvent->shapeChanged &&
             (m_NativeCursor == nullptr || cursorEvent->shapeId != m_NativeCursorShapeId) &&
@@ -405,23 +411,54 @@ void Session::applyNativeCursor(const NativeCursorEvent* cursorEvent)
             cursorEvent->width > 0 &&
             cursorEvent->height > 0 &&
             static_cast<quint64>(cursorEvent->imageData.size()) >= requiredImageBytes) {
+        m_NativeCursorSourceWidth = cursorEvent->width;
+        m_NativeCursorSourceHeight = cursorEvent->height;
+        m_NativeCursorSourceHotspotX = cursorEvent->hotspotX;
+        m_NativeCursorSourceHotspotY = cursorEvent->hotspotY;
+        m_NativeCursorSourceShapeId = cursorEvent->shapeId;
+        m_NativeCursorSourceImageData = cursorEvent->imageData.left(static_cast<int>(requiredImageBytes));
+    }
+
+    if (!m_NativeCursorSourceImageData.isEmpty() &&
+            (m_NativeCursor == nullptr ||
+             m_NativeCursorSourceShapeId != m_NativeCursorShapeId ||
+             scaleX != m_NativeCursorScaleX ||
+             scaleY != m_NativeCursorScaleY)) {
+        QImage cursorImage(reinterpret_cast<const uchar*>(m_NativeCursorSourceImageData.constData()),
+                           m_NativeCursorSourceWidth,
+                           m_NativeCursorSourceHeight,
+                           m_NativeCursorSourceWidth * 4,
+                           QImage::Format_ARGB32);
+        const int scaledWidth = qMax(1, static_cast<int>((static_cast<quint64>(m_NativeCursorSourceWidth) * scaleX + 0x8000) >> 16));
+        const int scaledHeight = qMax(1, static_cast<int>((static_cast<quint64>(m_NativeCursorSourceHeight) * scaleY + 0x8000) >> 16));
+        QImage scaledCursorImage = cursorImage.scaled(scaledWidth,
+                                                      scaledHeight,
+                                                      Qt::IgnoreAspectRatio,
+                                                      Qt::SmoothTransformation)
+                .convertToFormat(QImage::Format_ARGB32);
+        const int hotspotX = qMin(scaledWidth - 1,
+                                  qMax(0, static_cast<int>((static_cast<quint64>(m_NativeCursorSourceHotspotX) * scaleX + 0x8000) >> 16)));
+        const int hotspotY = qMin(scaledHeight - 1,
+                                  qMax(0, static_cast<int>((static_cast<quint64>(m_NativeCursorSourceHotspotY) * scaleY + 0x8000) >> 16)));
         SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(
-                    const_cast<char*>(cursorEvent->imageData.constData()),
-                    cursorEvent->width,
-                    cursorEvent->height,
+                    scaledCursorImage.bits(),
+                    scaledCursorImage.width(),
+                    scaledCursorImage.height(),
                     32,
-                    cursorEvent->width * 4,
+                    scaledCursorImage.bytesPerLine(),
                     SDL_PIXELFORMAT_BGRA32);
         if (surface != nullptr) {
             SDL_Cursor* cursor = SDL_CreateColorCursor(surface,
-                                                       cursorEvent->hotspotX,
-                                                       cursorEvent->hotspotY);
+                                                       hotspotX,
+                                                       hotspotY);
             SDL_FreeSurface(surface);
 
             if (cursor != nullptr) {
                 SDL_Cursor* oldCursor = m_NativeCursor;
                 m_NativeCursor = cursor;
-                m_NativeCursorShapeId = cursorEvent->shapeId;
+                m_NativeCursorShapeId = m_NativeCursorSourceShapeId;
+                m_NativeCursorScaleX = scaleX;
+                m_NativeCursorScaleY = scaleY;
                 SDL_SetCursor(m_NativeCursor);
 
                 if (oldCursor != nullptr) {
@@ -905,6 +942,13 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_Window(nullptr),
       m_NativeCursor(nullptr),
       m_NativeCursorShapeId(0),
+      m_NativeCursorSourceShapeId(0),
+      m_NativeCursorScaleX(1u << 16),
+      m_NativeCursorScaleY(1u << 16),
+      m_NativeCursorSourceWidth(0),
+      m_NativeCursorSourceHeight(0),
+      m_NativeCursorSourceHotspotX(0),
+      m_NativeCursorSourceHotspotY(0),
       m_VideoDecoder(nullptr),
       m_DecoderLock(SDL_CreateMutex()),
       m_AudioMuted(false),

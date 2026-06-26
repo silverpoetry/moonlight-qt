@@ -4,6 +4,7 @@
 #include <QQuickWindow>
 #include <QElapsedTimer>
 #include <QMutex>
+#include <QByteArray>
 
 #include <Limelight.h>
 #include <opus_multistream.h>
@@ -295,6 +296,14 @@ private:
     SDL_Window* m_Window;
     SDL_Cursor* m_NativeCursor;
     quint32 m_NativeCursorShapeId;
+    quint32 m_NativeCursorSourceShapeId;
+    quint32 m_NativeCursorScaleX;
+    quint32 m_NativeCursorScaleY;
+    quint16 m_NativeCursorSourceWidth;
+    quint16 m_NativeCursorSourceHeight;
+    quint16 m_NativeCursorSourceHotspotX;
+    quint16 m_NativeCursorSourceHotspotY;
+    QByteArray m_NativeCursorSourceImageData;
     IVideoDecoder* m_VideoDecoder;
     SDL_mutex* m_DecoderLock;
     bool m_AudioDisabled;
