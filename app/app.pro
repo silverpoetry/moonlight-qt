@@ -40,9 +40,9 @@ win32 {
         error("Missing dependencies. Please run 'powershell .\setup-deps.ps1' to fetch prebuilt libraries.")
     }
 
-    CPPWINRT_28000_INCLUDE = $$PWD/../.deps/sdkcpp-28000/c/Include/10.0.28000.0/cppwinrt
+    CPPWINRT_28000_INCLUDE = $$PWD/../libs/windows/include/cppwinrt-10.0.28000.0
     !exists($$CPPWINRT_28000_INCLUDE/winrt/Windows.UI.Input.h) {
-        error("Missing Windows SDK 28000 C++/WinRT headers required for touchpad gestures.")
+        error("Missing Windows SDK 28000 C++/WinRT headers required for touchpad gestures. Please run 'powershell .\setup-deps.ps1'.")
     }
 
     contains(QT_ARCH, x86_64) {
