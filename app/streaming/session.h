@@ -263,6 +263,12 @@ private:
     void clNativeCursor(PSS_NATIVE_CURSOR_UPDATE cursorUpdate);
 
     static
+    void clClipboardText(const uint8_t* text, uint32_t length);
+
+    static
+    void clClipboardReady();
+
+    static
     int arInit(int audioConfiguration,
                const POPUS_MULTISTREAM_CONFIGURATION opusConfig,
                void* arContext, int arFlags);
@@ -284,6 +290,8 @@ private:
 
     struct NativeCursorEvent;
     void applyNativeCursor(const NativeCursorEvent* cursorEvent);
+    void applyRemoteClipboardText(const QByteArray& text);
+    void sendCurrentClipboardText();
 
     StreamingPreferences* m_Preferences;
     bool m_IsFullScreen;
@@ -318,6 +326,10 @@ private:
     bool m_ShouldExit;
     bool m_AutoReconnectPending;
     bool m_SuppressTerminationErrors;
+    bool m_ClipboardSyncReady;
+    bool m_ApplyingRemoteClipboardText;
+    QByteArray m_LastLocalClipboardText;
+    QByteArray m_LastRemoteClipboardText;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;

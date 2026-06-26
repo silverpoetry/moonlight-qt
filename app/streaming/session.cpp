@@ -30,8 +30,10 @@
 #define SDL_CODE_GAMECONTROLLER_SET_CONTROLLER_LED 104
 #define SDL_CODE_GAMECONTROLLER_SET_ADAPTIVE_TRIGGERS 105
 #define SDL_CODE_NATIVE_CURSOR_UPDATE 106
+#define SDL_CODE_CLIPBOARD_TEXT 107
 
 #define AUTO_RECONNECT_SUSPEND_GAP_MS 5000
+#define MAX_CLIPBOARD_TEXT_BYTES (1024 * 1024)
 
 #include <openssl/rand.h>
 
@@ -68,7 +70,9 @@ CONNECTION_LISTENER_CALLBACKS Session::k_ConnCallbacks = {
     Session::clSetMotionEventState,
     Session::clSetControllerLED,
     Session::clSetAdaptiveTriggers,
-    Session::clNativeCursor
+    Session::clNativeCursor,
+    Session::clClipboardText,
+    Session::clClipboardReady
 };
 
 Session* Session::s_ActiveSession;
@@ -386,6 +390,95 @@ void Session::clNativeCursor(PSS_NATIVE_CURSOR_UPDATE cursorUpdate)
     event.user.data1 = nativeCursorEvent;
     if (SDL_PushEvent(&event) < 0) {
         delete nativeCursorEvent;
+    }
+}
+
+void Session::clClipboardText(const uint8_t* text, uint32_t length)
+{
+    if (s_ActiveSession == nullptr ||
+            !s_ActiveSession->m_StreamConfig.enableClipboardSync ||
+            text == nullptr ||
+            length > MAX_CLIPBOARD_TEXT_BYTES) {
+        return;
+    }
+
+    QByteArray* clipboardText = new QByteArray(reinterpret_cast<const char*>(text),
+                                               static_cast<int>(length));
+
+    SDL_Event event = {};
+    event.type = SDL_USEREVENT;
+    event.user.code = SDL_CODE_CLIPBOARD_TEXT;
+    event.user.data1 = clipboardText;
+    if (SDL_PushEvent(&event) < 0) {
+        delete clipboardText;
+    }
+}
+
+void Session::clClipboardReady()
+{
+    if (s_ActiveSession == nullptr || !s_ActiveSession->m_StreamConfig.enableClipboardSync) {
+        return;
+    }
+
+    s_ActiveSession->m_ClipboardSyncReady = true;
+
+    SDL_Event event = {};
+    event.type = SDL_CLIPBOARDUPDATE;
+    SDL_PushEvent(&event);
+}
+
+void Session::applyRemoteClipboardText(const QByteArray& text)
+{
+    if (!m_StreamConfig.enableClipboardSync ||
+            text.size() > MAX_CLIPBOARD_TEXT_BYTES ||
+            text == m_LastLocalClipboardText) {
+        return;
+    }
+
+    m_LastRemoteClipboardText = text;
+    m_ApplyingRemoteClipboardText = true;
+    if (SDL_SetClipboardText(QString::fromUtf8(text).toUtf8().constData()) == 0) {
+        m_LastLocalClipboardText = text;
+    }
+    else {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Failed to set local clipboard text: %s",
+                    SDL_GetError());
+    }
+    m_ApplyingRemoteClipboardText = false;
+}
+
+void Session::sendCurrentClipboardText()
+{
+    if (!m_StreamConfig.enableClipboardSync ||
+            !m_ClipboardSyncReady ||
+            m_ApplyingRemoteClipboardText ||
+            !SDL_HasClipboardText()) {
+        return;
+    }
+
+    char* text = SDL_GetClipboardText();
+    if (text == nullptr) {
+        return;
+    }
+
+    QByteArray clipboardText(text);
+    SDL_free(text);
+
+    if (clipboardText.size() > MAX_CLIPBOARD_TEXT_BYTES ||
+            clipboardText == m_LastLocalClipboardText ||
+            clipboardText == m_LastRemoteClipboardText) {
+        m_LastLocalClipboardText = clipboardText;
+        return;
+    }
+
+    if (LiSendClipboardText(reinterpret_cast<const uint8_t*>(clipboardText.constData()),
+                            static_cast<uint32_t>(clipboardText.size())) == 0) {
+        m_LastLocalClipboardText = clipboardText;
+    }
+    else {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Failed to send clipboard text to host");
     }
 }
 
@@ -960,6 +1053,8 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_ShouldExit(false),
       m_AutoReconnectPending(false),
       m_SuppressTerminationErrors(false),
+      m_ClipboardSyncReady(false),
+      m_ApplyingRemoteClipboardText(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_LastStartupTimingMs(0),
@@ -1084,6 +1179,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
     m_StreamConfig.width = m_Preferences->width;
     m_StreamConfig.height = m_Preferences->height;
     m_StreamConfig.enableNativeCursor = m_Preferences->absoluteMouseMode;
+    m_StreamConfig.enableClipboardSync = m_Preferences->enableClipboardSync;
 
     int x, y, width, height;
     getWindowDimensions(x, y, width, height);
@@ -2495,7 +2591,7 @@ void Session::exec()
         Uint64 loopGap = currentLoopTick - lastLoopTick;
         lastLoopTick = currentLoopTick;
 
-        if (loopGap >= AUTO_RECONNECT_SUSPEND_GAP_MS) {
+        if (m_Preferences->autoReconnectAfterResume && loopGap >= AUTO_RECONNECT_SUSPEND_GAP_MS) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "Detected long main loop gap (%llu ms), treating as suspend/resume",
                         (unsigned long long)loopGap);
@@ -2547,7 +2643,8 @@ void Session::exec()
             if (event.syswm.msg != nullptr &&
                     event.syswm.msg->subsystem == SDL_SYSWM_WINDOWS &&
                     event.syswm.msg->msg.win.msg == WM_POWERBROADCAST &&
-                    event.syswm.msg->msg.win.wParam == PBT_APMRESUMEAUTOMATIC) {
+                    event.syswm.msg->msg.win.wParam == PBT_APMRESUMEAUTOMATIC &&
+                    m_Preferences->autoReconnectAfterResume) {
                 triggerAutoReconnect("system resume");
             }
 #endif
@@ -2595,9 +2692,20 @@ void Session::exec()
                 delete nativeCursorEvent;
                 break;
             }
+            case SDL_CODE_CLIPBOARD_TEXT:
+            {
+                QByteArray* clipboardText = static_cast<QByteArray*>(event.user.data1);
+                applyRemoteClipboardText(*clipboardText);
+                delete clipboardText;
+                break;
+            }
             default:
                 SDL_assert(false);
             }
+            break;
+
+        case SDL_CLIPBOARDUPDATE:
+            sendCurrentClipboardText();
             break;
 
         case SDL_WINDOWEVENT:
@@ -2873,6 +2981,7 @@ void Session::exec()
 
 DispatchDeferredCleanup:
     logStartupTiming("Session.exec cleanup begin");
+    m_ClipboardSyncReady = false;
 
     // Switch back to synchronous logging mode
     StreamUtils::exitAsyncLoggingMode();

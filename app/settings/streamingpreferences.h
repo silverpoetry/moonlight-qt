@@ -123,6 +123,7 @@ public:
     Q_PROPERTY(bool absoluteMouseMode MEMBER absoluteMouseMode NOTIFY absoluteMouseModeChanged)
     Q_PROPERTY(bool absoluteTouchMode MEMBER absoluteTouchMode NOTIFY absoluteTouchModeChanged)
     Q_PROPERTY(bool enableTouchpadGestures MEMBER enableTouchpadGestures NOTIFY enableTouchpadGesturesChanged)
+    Q_PROPERTY(bool enableClipboardSync MEMBER enableClipboardSync NOTIFY enableClipboardSyncChanged)
     Q_PROPERTY(bool framePacing MEMBER framePacing NOTIFY framePacingChanged)
     Q_PROPERTY(bool connectionWarnings MEMBER connectionWarnings NOTIFY connectionWarningsChanged)
     Q_PROPERTY(bool configurationWarnings MEMBER configurationWarnings NOTIFY configurationWarningsChanged)
@@ -145,6 +146,7 @@ public:
     Q_PROPERTY(bool reverseScrollDirection MEMBER reverseScrollDirection NOTIFY reverseScrollDirectionChanged)
     Q_PROPERTY(bool swapFaceButtons MEMBER swapFaceButtons NOTIFY swapFaceButtonsChanged)
     Q_PROPERTY(bool keepAwake MEMBER keepAwake NOTIFY keepAwakeChanged)
+    Q_PROPERTY(bool autoReconnectAfterResume MEMBER autoReconnectAfterResume NOTIFY autoReconnectAfterResumeChanged)
     Q_PROPERTY(CaptureSysKeysMode captureSysKeysMode MEMBER captureSysKeysMode NOTIFY captureSysKeysModeChanged)
     Q_PROPERTY(Language language MEMBER language NOTIFY languageChanged);
 
@@ -166,6 +168,7 @@ public:
     bool absoluteMouseMode;
     bool absoluteTouchMode;
     bool enableTouchpadGestures;
+    bool enableClipboardSync;
     bool framePacing;
     bool connectionWarnings;
     bool configurationWarnings;
@@ -180,6 +183,7 @@ public:
     bool reverseScrollDirection;
     bool swapFaceButtons;
     bool keepAwake;
+    bool autoReconnectAfterResume;
     int packetSize;
     AudioConfig audioConfig;
     VideoCodecConfig videoCodecConfig;
@@ -207,6 +211,7 @@ signals:
     void absoluteMouseModeChanged();
     void absoluteTouchModeChanged();
     void enableTouchpadGesturesChanged();
+    void enableClipboardSyncChanged();
     void audioConfigChanged();
     void videoCodecConfigChanged();
     void enableHdrChanged();
@@ -229,6 +234,7 @@ signals:
     void swapFaceButtonsChanged();
     void captureSysKeysModeChanged();
     void keepAwakeChanged();
+    void autoReconnectAfterResumeChanged();
     void languageChanged();
 
 private:

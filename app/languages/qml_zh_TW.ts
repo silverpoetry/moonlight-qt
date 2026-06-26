@@ -1099,6 +1099,16 @@
         <translation>防止螢幕保護程式啟動或是螢幕在串流時進入睡眠狀態。</translation>
     </message>
     <message>
+        <location filename="../gui/SettingsView.qml" line="1286"/>
+        <source>Reconnect automatically after sleep or resume</source>
+        <translation>睡眠或恢復後自動重新連線</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1296"/>
+        <source>Restarts the streaming session automatically if the client wakes from sleep or the main loop is suspended long enough to disconnect.</source>
+        <translation>如果用戶端從睡眠中恢復，或主迴圈暫停時間長到足以斷線，則自動重新啟動串流工作階段。</translation>
+    </message>
+    <message>
         <location filename="../gui/SettingsView.qml" line="1331"/>
         <source>Capture system keyboard shortcuts</source>
         <translation>擷取系統鍵盤快速鍵</translation>
@@ -1152,6 +1162,16 @@
         <location filename="../gui/SettingsView.qml" line="1431"/>
         <source>When enabled, Moonlight captures Windows precision touchpad gestures and forwards supported pinch and three-finger gestures to the host.</source>
         <translation>啟用後，Moonlight 會擷取 Windows 精確式觸控板手勢，並將支援的雙指縮放和三指手勢轉送到主機。</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1454"/>
+        <source>Sync clipboard text with the host</source>
+        <translation>與主機同步剪貼簿文字</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1464"/>
+        <source>Synchronizes UTF-8 text clipboard contents with supported Sunshine hosts while streaming.</source>
+        <translation>串流時與支援的 Sunshine 主機同步 UTF-8 文字剪貼簿內容。</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1549"/>

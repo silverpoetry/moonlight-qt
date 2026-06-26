@@ -1279,6 +1279,22 @@ Flickable {
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("Prevents the screensaver from starting or the display from going to sleep while streaming.")
                 }
+
+                CheckBox {
+                    id: autoReconnectAfterResumeCheck
+                    width: parent.width
+                    text: qsTr("Reconnect automatically after sleep or resume")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.autoReconnectAfterResume
+                    onCheckedChanged: {
+                        StreamingPreferences.autoReconnectAfterResume = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Restarts the streaming session automatically if the client wakes from sleep or the main loop is suspended long enough to disconnect.")
+                }
             }
         }
     }
@@ -1429,6 +1445,23 @@ Flickable {
                     ToolTip.timeout: 10000
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("When enabled, Moonlight captures Windows precision touchpad gestures and forwards supported pinch and three-finger gestures to the host.")
+                }
+
+                CheckBox {
+                    id: clipboardSyncCheck
+                    hoverEnabled: true
+                    width: parent.width
+                    text: qsTr("Sync clipboard text with the host")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.enableClipboardSync
+                    onCheckedChanged: {
+                        StreamingPreferences.enableClipboardSync = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 10000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Synchronizes UTF-8 text clipboard contents with supported Sunshine hosts while streaming.")
                 }
 
                 CheckBox {
