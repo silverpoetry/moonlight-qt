@@ -33,7 +33,26 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_RightButtonReleaseTimer(0),
       m_DragTimer(0),
       m_DragButton(0),
-      m_NumFingersDown(0)
+      m_NumFingersDown(0),
+      m_TouchpadWindowRegistered(false),
+      m_TouchpadGestureTracking(false),
+      m_TouchpadNativeGestureActive(false),
+      m_TouchpadScrollGestureActive(false),
+      m_TouchpadGestureStartCenterX(0.0f),
+      m_TouchpadGestureStartCenterY(0.0f),
+      m_TouchpadGestureStartDistance(0.0f),
+      m_TouchpadSuppressWheelUntil(0),
+      m_TouchpadSuppressCtrlWheelUntil(0),
+      m_TouchpadSuppressNextCtrlWheel(false),
+      m_TouchpadSuppressedCtrlDown{false, false},
+      m_TouchpadLastFrameId(0),
+      m_TouchpadCachedDevice(nullptr),
+      m_TouchpadCachedDeviceLeft(0),
+      m_TouchpadCachedDeviceTop(0),
+      m_TouchpadCachedDeviceWidth(0),
+      m_TouchpadCachedDeviceHeight(0),
+      m_WindowsMessageHookHwnd(nullptr),
+      m_WindowsMessageHookPrevWndProc(nullptr)
 {
     // System keys are always captured when running without a DE
     if (!WMUtils::isRunningDesktopEnvironment()) {
@@ -201,10 +220,18 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     SDL_zero(m_LastTouchDownEvent);
     SDL_zero(m_LastTouchUpEvent);
     SDL_zero(m_TouchDownEvent);
+    SDL_zero(m_TouchpadContactDown);
+    SDL_zero(m_TouchpadHavePosition);
+    SDL_zero(m_TouchpadX);
+    SDL_zero(m_TouchpadY);
 }
 
 SdlInputHandler::~SdlInputHandler()
 {
+    updateTouchpadGlobalGesturesEnabled(false);
+    restoreWindowsMessageHook();
+    cancelNativeTouchpadContacts();
+
     for (int i = 0; i < MAX_GAMEPADS; i++) {
         if (m_GamepadState[i].mouseEmulationTimer != 0) {
             Session::get()->notifyMouseEmulationMode(false);
@@ -255,10 +282,14 @@ SdlInputHandler::~SdlInputHandler()
 void SdlInputHandler::setWindow(SDL_Window *window)
 {
     m_Window = window;
+    registerTouchpadWindow();
+    registerTouchpadGlobalGestures();
 }
 
 void SdlInputHandler::raiseAllKeys()
 {
+    cancelNativeTouchpadContacts();
+
     if (m_KeysDown.isEmpty()) {
         return;
     }
@@ -307,10 +338,13 @@ void SdlInputHandler::notifyFocusLost()
     // Raise all keys that are currently pressed. If we don't do this, certain keys
     // used in shortcuts that cause focus loss (such as Alt+Tab) may get stuck down.
     raiseAllKeys();
+
+    updateTouchpadGlobalGesturesEnabled(false);
 }
 
 void SdlInputHandler::notifyFocusGained()
 {
+    updateTouchpadGlobalGesturesEnabled(isSystemKeyCaptureActive());
 }
 
 bool SdlInputHandler::isCaptureActive()
@@ -345,6 +379,7 @@ void SdlInputHandler::updateKeyboardGrabState()
 #endif
 
     m_KeyboardCaptureActive = shouldGrab;
+    updateTouchpadGlobalGesturesEnabled(shouldGrab);
 }
 
 bool SdlInputHandler::isSystemKeyCaptureActive()

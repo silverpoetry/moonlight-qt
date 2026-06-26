@@ -3,7 +3,15 @@
 #include "settings/streamingpreferences.h"
 #include "backend/computermanager.h"
 
+#ifdef Q_OS_WIN32
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0603
+#endif
+#endif
+
 #include "SDL_compat.h"
+#include <SDL_syswm.h>
+#include <cstdint>
 
 struct GamepadState {
     SDL_GameController* controller;
@@ -130,6 +138,14 @@ public:
 
     void handleTouchFingerEvent(SDL_TouchFingerEvent* event);
 
+    bool handleSystemWindowEvent(SDL_SysWMmsg* msg);
+
+    bool handleNativeTouchpadWheelMessage(unsigned int message, uintptr_t wParam);
+
+    void registerTouchpadWindow();
+
+    void registerTouchpadGlobalGestures();
+
     int getAttachedGamepadMask();
 
     void raiseAllKeys();
@@ -187,6 +203,16 @@ private:
     void handleRelativeFingerEvent(SDL_TouchFingerEvent* event);
 
     void performSpecialKeyCombo(KeyCombo combo);
+
+    void cancelNativeTouchpadContacts();
+
+    bool isTouchpadCtrlFallbackActive() const;
+
+    void updateTouchpadGlobalGesturesEnabled(bool enabled);
+
+    void installWindowsMessageHook(void* hwnd);
+
+    void restoreWindowsMessageHook();
 
     static
     Uint32 longPressTimerCallback(Uint32 interval, void* param);
@@ -248,6 +274,29 @@ private:
     SDL_TimerID m_DragTimer;
     char m_DragButton;
     int m_NumFingersDown;
+    bool m_TouchpadWindowRegistered;
+    bool m_TouchpadContactDown[MAX_FINGERS];
+    bool m_TouchpadHavePosition[MAX_FINGERS];
+    float m_TouchpadX[MAX_FINGERS];
+    float m_TouchpadY[MAX_FINGERS];
+    bool m_TouchpadGestureTracking;
+    bool m_TouchpadNativeGestureActive;
+    bool m_TouchpadScrollGestureActive;
+    float m_TouchpadGestureStartCenterX;
+    float m_TouchpadGestureStartCenterY;
+    float m_TouchpadGestureStartDistance;
+    Uint32 m_TouchpadSuppressWheelUntil;
+    Uint32 m_TouchpadSuppressCtrlWheelUntil;
+    bool m_TouchpadSuppressNextCtrlWheel;
+    bool m_TouchpadSuppressedCtrlDown[2];
+    uint32_t m_TouchpadLastFrameId;
+    void* m_TouchpadCachedDevice;
+    int m_TouchpadCachedDeviceLeft;
+    int m_TouchpadCachedDeviceTop;
+    int m_TouchpadCachedDeviceWidth;
+    int m_TouchpadCachedDeviceHeight;
+    void* m_WindowsMessageHookHwnd;
+    void* m_WindowsMessageHookPrevWndProc;
 
     static const int k_ButtonMap[];
 };

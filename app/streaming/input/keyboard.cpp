@@ -466,6 +466,31 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         }
     }
 
+    if (keyCode == 0xA2 || keyCode == 0xA3) {
+        const int ctrlIndex = keyCode == 0xA2 ? 0 : 1;
+        const bool touchpadGestureMaySynthesizeCtrl =
+                m_TouchpadGestureTracking &&
+                !m_TouchpadScrollGestureActive;
+
+        if (event->state == SDL_PRESSED &&
+                touchpadGestureMaySynthesizeCtrl &&
+                !m_KeysDown.contains(keyCode)) {
+            m_TouchpadSuppressedCtrlDown[ctrlIndex] = true;
+            return;
+        }
+
+        if (event->state == SDL_RELEASED &&
+                m_TouchpadSuppressedCtrlDown[ctrlIndex] &&
+                !m_KeysDown.contains(keyCode)) {
+            m_TouchpadSuppressedCtrlDown[ctrlIndex] = false;
+            return;
+        }
+
+        if (event->state == SDL_PRESSED && !touchpadGestureMaySynthesizeCtrl) {
+            m_TouchpadSuppressedCtrlDown[ctrlIndex] = false;
+        }
+    }
+
     // Track the key state so we always know which keys are down
     if (event->state == SDL_PRESSED) {
         m_KeysDown.insert(keyCode);

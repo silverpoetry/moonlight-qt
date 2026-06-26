@@ -40,6 +40,11 @@ win32 {
         error("Missing dependencies. Please run 'powershell .\setup-deps.ps1' to fetch prebuilt libraries.")
     }
 
+    CPPWINRT_28000_INCLUDE = $$PWD/../.deps/sdkcpp-28000/c/Include/10.0.28000.0/cppwinrt
+    !exists($$CPPWINRT_28000_INCLUDE/winrt/Windows.UI.Input.h) {
+        error("Missing Windows SDK 28000 C++/WinRT headers required for touchpad gestures.")
+    }
+
     contains(QT_ARCH, x86_64) {
         LIBS += -L$$PWD/../libs/windows/lib/x64
         INCLUDEPATH += $$PWD/../libs/windows/include/x64 $$PWD/../libs/windows/include/x64/SDL2
@@ -49,8 +54,8 @@ win32 {
         INCLUDEPATH += $$PWD/../libs/windows/include/arm64 $$PWD/../libs/windows/include/arm64/SDL2
     }
 
-    INCLUDEPATH += $$PWD/../libs/windows/include
-    LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib gdi32.lib user32.lib d3d9.lib dwmapi.lib dbghelp.lib
+    INCLUDEPATH += $$PWD/../libs/windows/include $$CPPWINRT_28000_INCLUDE
+    LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib oleaut32.lib runtimeobject.lib gdi32.lib user32.lib d3d9.lib dwmapi.lib dbghelp.lib
 }
 macx:!disable-prebuilts {
     !exists($$PWD/../libs/mac) {
@@ -191,6 +196,8 @@ SOURCES += \
     streaming/input/keyboard.cpp \
     streaming/input/mouse.cpp \
     streaming/input/reltouch.cpp \
+    streaming/input/windowstouchpadglobal.cpp \
+    streaming/input/windowstouchpad.cpp \
     streaming/session.cpp \
     streaming/audio/audio.cpp \
     streaming/audio/audiodeviceprewarmer.cpp \
