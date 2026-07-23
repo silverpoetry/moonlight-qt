@@ -1,5 +1,6 @@
 #include "streamingpreferences.h"
 #include "utils.h"
+#include "streaming/streamutils.h"
 
 #include <QSettings>
 #include <QTranslator>
@@ -13,6 +14,7 @@
 #define SER_STREAMSETTINGS "streamsettings"
 #define SER_WIDTH "width"
 #define SER_HEIGHT "height"
+#define SER_RESOLUTIONSELECTION "resolutionselection"
 #define SER_FPS "fps"
 #define SER_BITRATE "bitrate"
 #define SER_UNLOCK_BITRATE "unlockbitrate"
@@ -105,6 +107,64 @@ StreamingPreferences* StreamingPreferences::get(QQmlEngine *qmlEngine)
     }
 }
 
+static int roundToEven(int value)
+{
+    return value & ~1;
+}
+
+QRect StreamingPreferences::getResolutionForPreset(ResolutionSelection selection, int customWidth, int customHeight)
+{
+    switch (selection) {
+    case RS_720P:
+        return StreamUtils::getDisplayAspectResolution(1280);
+    case RS_1080P:
+        return StreamUtils::getDisplayAspectResolution(1920);
+    case RS_1440P:
+        return StreamUtils::getDisplayAspectResolution(2560);
+    case RS_4K:
+        return StreamUtils::getDisplayAspectResolution(3840);
+    case RS_CUSTOM:
+    case RS_NATIVE:
+    default:
+        return QRect(0, 0, roundToEven(customWidth), roundToEven(customHeight));
+    }
+}
+
+QRect StreamingPreferences::getResolutionForSelection(ResolutionSelection selection, int customWidth, int customHeight)
+{
+    return getResolutionForPreset(selection, customWidth, customHeight);
+}
+
+StreamingPreferences::ResolutionSelection StreamingPreferences::getResolutionSelectionForDimensions(int width, int height)
+{
+    if (width == 1280 && height == 720) {
+        return RS_720P;
+    }
+    else if (width == 1920 && height == 1080) {
+        return RS_1080P;
+    }
+    else if (width == 2560 && height == 1440) {
+        return RS_1440P;
+    }
+    else if (width == 3840 && height == 2160) {
+        return RS_4K;
+    }
+    else {
+        return RS_CUSTOM;
+    }
+}
+
+void StreamingPreferences::setResolutionSelection(ResolutionSelection selection, int customWidth, int customHeight)
+{
+    resolutionSelection = selection;
+
+    QRect resolution = getResolutionForPreset(selection, customWidth, customHeight);
+    width = resolution.width();
+    height = resolution.height();
+
+    emit displayModeChanged();
+}
+
 void StreamingPreferences::reload()
 {
     QSettings settings;
@@ -125,8 +185,13 @@ void StreamingPreferences::reload()
     }
 #endif
 
-    width = settings.value(SER_WIDTH, 1280).toInt();
-    height = settings.value(SER_HEIGHT, 720).toInt();
+    int savedWidth = settings.value(SER_WIDTH, 1280).toInt();
+    int savedHeight = settings.value(SER_HEIGHT, 720).toInt();
+    resolutionSelection = static_cast<ResolutionSelection>(settings.value(SER_RESOLUTIONSELECTION,
+                                                                          static_cast<int>(getResolutionSelectionForDimensions(savedWidth, savedHeight))).toInt());
+    QRect resolution = getResolutionForPreset(resolutionSelection, savedWidth, savedHeight);
+    width = resolution.width();
+    height = resolution.height();
     fps = settings.value(SER_FPS, 60).toInt();
     enableYUV444 = settings.value(SER_YUV444, false).toBool();
     bitrateKbps = settings.value(SER_BITRATE, getDefaultBitrate(width, height, fps, enableYUV444)).toInt();
@@ -330,6 +395,7 @@ void StreamingPreferences::save()
 
     settings.setValue(SER_WIDTH, width);
     settings.setValue(SER_HEIGHT, height);
+    settings.setValue(SER_RESOLUTIONSELECTION, static_cast<int>(resolutionSelection));
     settings.setValue(SER_FPS, fps);
     settings.setValue(SER_BITRATE, bitrateKbps);
     settings.setValue(SER_UNLOCK_BITRATE, unlockBitrate);

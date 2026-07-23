@@ -341,10 +341,10 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addPositionalArgument("host", "Host computer name, UUID, or IP address", "<host>");
     parser.addPositionalArgument("app", "App to stream", "\"<app>\"");
 
-    parser.addFlagOption("720",  "1280x720 resolution");
-    parser.addFlagOption("1080", "1920x1080 resolution");
-    parser.addFlagOption("1440", "2560x1440 resolution");
-    parser.addFlagOption("4K", "3840x2160 resolution");
+    parser.addFlagOption("720",  "1280-wide resolution using the client display aspect ratio");
+    parser.addFlagOption("1080", "1920-wide resolution using the client display aspect ratio");
+    parser.addFlagOption("1440", "2560-wide resolution using the client display aspect ratio");
+    parser.addFlagOption("4K", "3840-wide resolution using the client display aspect ratio");
     parser.addValueOption("resolution", "custom <width>x<height> resolution");
     parser.addToggleOption("vsync", "V-Sync");
     parser.addValueOption("fps", "FPS");
@@ -385,21 +385,16 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     if (displaySet) {
         QString name = resoOptions.last();
         if (name == "720") {
-            preferences->width  = 1280;
-            preferences->height = 720;
+            preferences->setResolutionSelection(StreamingPreferences::RS_720P);
         } else if (name == "1080") {
-            preferences->width  = 1920;
-            preferences->height = 1080;
+            preferences->setResolutionSelection(StreamingPreferences::RS_1080P);
         } else if (name == "1440") {
-            preferences->width  = 2560;
-            preferences->height = 1440;
+            preferences->setResolutionSelection(StreamingPreferences::RS_1440P);
         } else if (name == "4K") {
-            preferences->width  = 3840;
-            preferences->height = 2160;
+            preferences->setResolutionSelection(StreamingPreferences::RS_4K);
         } else if (name == "resolution") {
             auto resolution = parser.getResolutionOptionValue(name);
-            preferences->width  = resolution.first;
-            preferences->height = resolution.second;
+            preferences->setResolutionSelection(StreamingPreferences::RS_CUSTOM, resolution.first, resolution.second);
         }
     }
 

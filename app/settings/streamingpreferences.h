@@ -60,6 +60,17 @@ public:
     };
     Q_ENUM(UIDisplayMode)
 
+    enum ResolutionSelection
+    {
+        RS_720P,
+        RS_1080P,
+        RS_1440P,
+        RS_4K,
+        RS_NATIVE,
+        RS_CUSTOM
+    };
+    Q_ENUM(ResolutionSelection)
+
     // New entries must go at the end of the enum
     // to avoid renumbering existing entries (which
     // would affect existing user preferences).
@@ -110,6 +121,7 @@ public:
 
     Q_PROPERTY(int width MEMBER width NOTIFY displayModeChanged)
     Q_PROPERTY(int height MEMBER height NOTIFY displayModeChanged)
+    Q_PROPERTY(ResolutionSelection resolutionSelection MEMBER resolutionSelection NOTIFY displayModeChanged)
     Q_PROPERTY(int fps MEMBER fps NOTIFY displayModeChanged)
     Q_PROPERTY(int bitrateKbps MEMBER bitrateKbps NOTIFY bitrateChanged)
     Q_PROPERTY(bool unlockBitrate MEMBER unlockBitrate NOTIFY unlockBitrateChanged)
@@ -151,10 +163,16 @@ public:
     Q_PROPERTY(Language language MEMBER language NOTIFY languageChanged);
 
     Q_INVOKABLE bool retranslate();
+    Q_INVOKABLE QRect getResolutionForSelection(ResolutionSelection selection, int customWidth = 0, int customHeight = 0);
+    Q_INVOKABLE void setResolutionSelection(ResolutionSelection selection, int customWidth = 0, int customHeight = 0);
+
+    static QRect getResolutionForPreset(ResolutionSelection selection, int customWidth = 0, int customHeight = 0);
+    static ResolutionSelection getResolutionSelectionForDimensions(int width, int height);
 
     // Directly accessible members for preferences
     int width;
     int height;
+    ResolutionSelection resolutionSelection;
     int fps;
     int bitrateKbps;
     bool unlockBitrate;

@@ -157,8 +157,18 @@ Flickable {
                                                                "text": friendlyNamePrefix+" ("+rect.width+"x"+rect.height+")",
                                                                "video_width": ""+rect.width,
                                                                "video_height": ""+rect.height,
+                                                               "resolution_selection": StreamingPreferences.RS_NATIVE,
                                                                "is_custom": false
                                                            })
+                            }
+                        }
+
+                        function updatePresetResolution(index) {
+                            var selection = parseInt(resolutionListModel.get(index).resolution_selection)
+                            if (selection >= StreamingPreferences.RS_720P && selection <= StreamingPreferences.RS_4K) {
+                                var rect = StreamingPreferences.getResolutionForSelection(selection, 0, 0)
+                                resolutionListModel.setProperty(index, "video_width", ""+rect.width)
+                                resolutionListModel.setProperty(index, "video_height", ""+rect.height)
                             }
                         }
 
@@ -166,6 +176,10 @@ Flickable {
                         Component.onCompleted: {
                             // Refresh display data before using it to build the list
                             SystemProperties.refreshDisplays()
+
+                            for (var presetIndex = 0; presetIndex < resolutionListModel.count; presetIndex++) {
+                                updatePresetResolution(presetIndex)
+                            }
 
                             // Add native and safe area resolutions for all attached displays
                             var done = false
@@ -197,16 +211,22 @@ Flickable {
                                 }
                             }
 
-                            // load the saved width/height, and iterate through the ComboBox until a match is found
+                            // load the saved selection, and iterate through the ComboBox until a match is found
                             // and set it to that index.
                             var saved_width = StreamingPreferences.width
                             var saved_height = StreamingPreferences.height
+                            var saved_selection = StreamingPreferences.resolutionSelection
                             var index_set = false
                             for (var i = 0; i < resolutionListModel.count; i++) {
                                 var el_width = parseInt(resolutionListModel.get(i).video_width);
                                 var el_height = parseInt(resolutionListModel.get(i).video_height);
+                                var el_selection = parseInt(resolutionListModel.get(i).resolution_selection);
 
-                                if (saved_width === el_width && saved_height === el_height) {
+                                if ((saved_selection >= StreamingPreferences.RS_720P &&
+                                     saved_selection <= StreamingPreferences.RS_4K &&
+                                     saved_selection === el_selection) ||
+                                    (saved_width === el_width && saved_height === el_height &&
+                                     saved_selection === el_selection)) {
                                     currentIndex = i
                                     index_set = true
                                     break
@@ -219,6 +239,7 @@ Flickable {
                                                                "text": qsTr("Custom")+" ("+StreamingPreferences.width+"x"+StreamingPreferences.height+")",
                                                                "video_width": ""+StreamingPreferences.width,
                                                                "video_height": ""+StreamingPreferences.height,
+                                                               "resolution_selection": StreamingPreferences.RS_CUSTOM,
                                                                "is_custom": true
                                                            })
                                 currentIndex = resolutionListModel.count - 1
@@ -228,6 +249,7 @@ Flickable {
                                                                "text": qsTr("Custom"),
                                                                "video_width": "",
                                                                "video_height": "",
+                                                               "resolution_selection": StreamingPreferences.RS_CUSTOM,
                                                                "is_custom": true
                                                            })
                             }
@@ -248,26 +270,30 @@ Flickable {
                             // based on attached display resolution
                             ListElement {
                                 text: qsTr("720p")
-                                video_width: "1280"
-                                video_height: "720"
+                                video_width: ""
+                                video_height: ""
+                                resolution_selection: 0
                                 is_custom: false
                             }
                             ListElement {
                                 text: qsTr("1080p")
-                                video_width: "1920"
-                                video_height: "1080"
+                                video_width: ""
+                                video_height: ""
+                                resolution_selection: 1
                                 is_custom: false
                             }
                             ListElement {
                                 text: qsTr("1440p")
-                                video_width: "2560"
-                                video_height: "1440"
+                                video_width: ""
+                                video_height: ""
+                                resolution_selection: 2
                                 is_custom: false
                             }
                             ListElement {
                                 text: qsTr("4K")
-                                video_width: "3840"
-                                video_height: "2160"
+                                video_width: ""
+                                video_height: ""
+                                resolution_selection: 3
                                 is_custom: false
                             }
                         }
@@ -275,11 +301,13 @@ Flickable {
                         function updateBitrateForSelection() {
                             var selectedWidth = parseInt(resolutionListModel.get(currentIndex).video_width)
                             var selectedHeight = parseInt(resolutionListModel.get(currentIndex).video_height)
+                            var selectedResolution = parseInt(resolutionListModel.get(currentIndex).resolution_selection)
 
                             // Only modify the bitrate if the values actually changed
-                            if (StreamingPreferences.width !== selectedWidth || StreamingPreferences.height !== selectedHeight) {
-                                StreamingPreferences.width = selectedWidth
-                                StreamingPreferences.height = selectedHeight
+                            if (StreamingPreferences.width !== selectedWidth ||
+                                    StreamingPreferences.height !== selectedHeight ||
+                                    StreamingPreferences.resolutionSelection !== selectedResolution) {
+                                StreamingPreferences.setResolutionSelection(selectedResolution, selectedWidth, selectedHeight)
 
                                 if (StreamingPreferences.autoAdjustBitrate) {
                                     StreamingPreferences.bitrateKbps = StreamingPreferences.getDefaultBitrate(StreamingPreferences.width,
@@ -357,7 +385,8 @@ Flickable {
                                     if (resolutionListModel.get(i).is_custom) {
                                         resolutionListModel.setProperty(i, "video_width", width)
                                         resolutionListModel.setProperty(i, "video_height", height)
-                                        resolutionListModel.setProperty(i, "text", "Custom ("+width+"x"+height+")")
+                                        resolutionListModel.setProperty(i, "resolution_selection", StreamingPreferences.RS_CUSTOM)
+                                        resolutionListModel.setProperty(i, "text", qsTr("Custom")+" ("+width+"x"+height+")")
 
                                         // Now update the bitrate using the custom resolution
                                         resolutionComboBox.currentIndex = i

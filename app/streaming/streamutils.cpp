@@ -2,6 +2,7 @@
 
 #include <Qt>
 #include <QDir>
+#include <QtMath>
 
 #ifdef Q_OS_DARWIN
 #include <ApplicationServices/ApplicationServices.h>
@@ -252,6 +253,30 @@ bool StreamUtils::hasFastAes()
     #warning Unknown 64-bit platform. Assuming AES is fast on this CPU.
     return true;
 #endif
+}
+
+QRect StreamUtils::getDisplayAspectResolution(int fixedWidth)
+{
+    SDL_DisplayMode mode;
+    if (SDL_WasInit(SDL_INIT_VIDEO) == 0 && SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "SDL_InitSubSystem(SDL_INIT_VIDEO) failed while calculating preset resolution: %s",
+                    SDL_GetError());
+        return QRect(0, 0, fixedWidth, fixedWidth * 9 / 16);
+    }
+
+    if (SDL_GetCurrentDisplayMode(0, &mode) != 0 || mode.w <= 0 || mode.h <= 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "SDL_GetCurrentDisplayMode() failed while calculating preset resolution: %s",
+                    SDL_GetError());
+        return QRect(0, 0, fixedWidth, fixedWidth * 9 / 16);
+    }
+
+    int longSide = qMax(mode.w, mode.h);
+    int shortSide = qMin(mode.w, mode.h);
+    int height = qRound(static_cast<double>(fixedWidth) * shortSide / longSide);
+
+    return QRect(0, 0, fixedWidth, height & ~1);
 }
 
 bool StreamUtils::getNativeDesktopMode(int displayIndex, SDL_DisplayMode* mode, SDL_Rect* safeArea)

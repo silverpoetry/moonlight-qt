@@ -2,6 +2,8 @@
 
 #include "SDL_compat.h"
 
+#include <QRect>
+
 class StreamUtils
 {
 public:
@@ -22,6 +24,9 @@ public:
 
     static
     bool getNativeDesktopMode(int displayIndex, SDL_DisplayMode* mode, SDL_Rect* safeArea);
+
+    static
+    QRect getDisplayAspectResolution(int fixedWidth);
 
     static
     int getDisplayRefreshRate(SDL_Window* window);
