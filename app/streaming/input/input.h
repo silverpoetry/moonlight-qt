@@ -81,6 +81,7 @@ struct DualSenseOutputReport{
 #define MAX_GAMEPADS 16
 
 #define MAX_FINGERS 2
+#define MAX_NATIVE_TOUCHPAD_CONTACTS 5
 
 #define GAMEPAD_HAPTIC_METHOD_NONE 0
 #define GAMEPAD_HAPTIC_METHOD_LEFTRIGHT 1
@@ -150,6 +151,10 @@ public:
 
     void registerTouchpadGlobalGestures();
 
+    void cancelNativeTouchpadContacts();
+
+    bool isNativeTouchpadProtocolSupported() const;
+
     int getAttachedGamepadMask();
 
     void raiseAllKeys();
@@ -208,7 +213,7 @@ private:
 
     void performSpecialKeyCombo(KeyCombo combo);
 
-    void cancelNativeTouchpadContacts();
+    bool handleNativeTouchpadProtocolFrame(uint32_t pointerId);
 
     bool isTouchpadCtrlFallbackActive() const;
 
@@ -297,6 +302,14 @@ private:
     bool m_TouchpadSuppressNextCtrlWheel;
     bool m_TouchpadSuppressedCtrlDown[2];
     uint32_t m_TouchpadLastFrameId;
+    struct {
+        uint32_t pointerId;
+        float x;
+        float y;
+        float pressure;
+        bool active;
+    } m_NativeTouchpadContacts[MAX_NATIVE_TOUCHPAD_CONTACTS];
+    uint8_t m_NativeTouchpadButtonState;
     void* m_TouchpadCachedDevice;
     int m_TouchpadCachedDeviceLeft;
     int m_TouchpadCachedDeviceTop;

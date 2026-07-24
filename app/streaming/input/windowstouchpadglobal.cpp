@@ -5,13 +5,16 @@
 #ifdef Q_OS_WIN32
 
 #include <winrt/base.h>
+#include <winrt/Windows.Devices.Input.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.UI.Core.h>
 #include <winrt/Windows.UI.Input.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
 
 namespace {
 using namespace winrt;
@@ -32,6 +35,102 @@ constexpr short REMOTE_VK_LEFT = 0x25;
 constexpr short REMOTE_VK_UP = 0x26;
 constexpr short REMOTE_VK_RIGHT = 0x27;
 constexpr short REMOTE_VK_DOWN = 0x28;
+constexpr float PHYSICAL_UNITS_PER_INCH = 96.0f;
+constexpr float MILLIMETERS_PER_INCH = 25.4f;
+
+struct NativeTouchpadPoint
+{
+    uint32_t pointerId;
+    float x;
+    float y;
+    float pressure;
+    uint16_t deviceWidthMm;
+    uint16_t deviceHeightMm;
+    uint8_t buttonState;
+};
+
+bool nativeTouchpadProtocolSupported()
+{
+    const uint32_t hostFeatures = LiGetHostFeatureFlags();
+    return (hostFeatures & (LI_FF_TOUCHPAD_FRAME_EVENTS | LI_FF_TOUCHPAD_EVENTS)) != 0;
+}
+
+bool getNativeTouchpadPoint(PointerPoint const& point, NativeTouchpadPoint& nativePoint)
+{
+    try {
+        auto physicalPosition = point.try_as<IPointerPointPhysicalPosition>();
+        if (!physicalPosition || !physicalPosition.IsPhysicalPositionSupported()) {
+            return false;
+        }
+
+        const auto pointerDevice = point.PointerDevice();
+        if (!pointerDevice) {
+            return false;
+        }
+
+        const auto deviceRect = pointerDevice.PhysicalDeviceRect();
+        if (deviceRect.Width <= 0.0f || deviceRect.Height <= 0.0f) {
+            return false;
+        }
+
+        const auto position = physicalPosition.PhysicalPosition();
+        const auto properties = point.Properties();
+        const auto physicalUnitsToMillimeters = [](float physicalUnits) {
+            const long millimeters = std::lround(
+                        std::fabs(physicalUnits) *
+                        MILLIMETERS_PER_INCH /
+                        PHYSICAL_UNITS_PER_INCH);
+            return static_cast<uint16_t>(
+                        std::clamp<long>(millimeters,
+                                         0,
+                                         std::numeric_limits<uint16_t>::max()));
+        };
+
+        nativePoint.pointerId = point.PointerId();
+        nativePoint.x = std::clamp(
+                    (position.X - deviceRect.X) / deviceRect.Width,
+                    0.0f,
+                    1.0f);
+        nativePoint.y = std::clamp(
+                    (position.Y - deviceRect.Y) / deviceRect.Height,
+                    0.0f,
+                    1.0f);
+        nativePoint.pressure = std::clamp(properties.Pressure(), 0.0f, 1.0f);
+        nativePoint.deviceWidthMm = physicalUnitsToMillimeters(deviceRect.Width);
+        nativePoint.deviceHeightMm = physicalUnitsToMillimeters(deviceRect.Height);
+        nativePoint.buttonState = properties.IsLeftButtonPressed() ?
+                    LI_TOUCHPAD_BUTTON_PRIMARY :
+                    0;
+        return true;
+    }
+    catch (hresult_error const& e) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Failed to read physical touchpad position: 0x%08x",
+                    static_cast<unsigned int>(e.code()));
+        return false;
+    }
+}
+
+int sendNativeTouchpadContact(uint8_t eventType, const NativeTouchpadPoint& point)
+{
+    const uint32_t hostFeatures = LiGetHostFeatureFlags();
+    if (!(hostFeatures & LI_FF_TOUCHPAD_EVENTS)) {
+        return LI_ERR_UNSUPPORTED;
+    }
+
+    return LiSendTouchpadEvent(
+                eventType,
+                point.pointerId,
+                point.x,
+                point.y,
+                point.pressure,
+                0.0f,
+                0.0f,
+                LI_ROT_UNKNOWN,
+                point.deviceWidthMm,
+                point.deviceHeightMm,
+                point.buttonState);
+}
 
 class GlobalTouchpadGestureState
 {
@@ -113,28 +212,65 @@ public:
         }
 
         if (!m_Controller) {
+            cancelNativeForwarding();
             resetGestureState();
             m_Enabled = false;
             return;
         }
 
         const bool active = enabled && m_Handler != nullptr;
-        if (m_Enabled == active) {
+        const bool useNativeProtocol = active && nativeTouchpadProtocolSupported();
+        TouchpadGlobalGestureKinds supportedGestures =
+                TouchpadGlobalGestureKinds::ThreeFingerManipulations;
+        if (useNativeProtocol) {
+            // Manipulation events expose physical positions for every contact,
+            // so they can be forwarded natively. Global action events do not
+            // expose contact positions; retain the existing three-finger action
+            // behavior only when system-key capture is active.
+            supportedGestures = supportedGestures |
+                    TouchpadGlobalGestureKinds::FourFingerManipulations |
+                    TouchpadGlobalGestureKinds::FiveFingerManipulations;
+            if (m_Handler->isSystemKeyCaptureActive()) {
+                supportedGestures = supportedGestures |
+                        TouchpadGlobalGestureKinds::ThreeFingerActions;
+            }
+        }
+        else {
+            supportedGestures = supportedGestures |
+                    TouchpadGlobalGestureKinds::ThreeFingerActions;
+        }
+
+        if (m_Enabled == active &&
+                m_UseNativeProtocol == useNativeProtocol &&
+                m_SupportedGestures == supportedGestures) {
             return;
         }
 
-        if (!active) {
+        if (!active ||
+                m_UseNativeProtocol != useNativeProtocol ||
+                m_SupportedGestures != supportedGestures) {
+            cancelNativeForwarding();
             resetGestureState();
         }
 
         try {
+            if (m_Enabled) {
+                m_Controller.Enabled(false);
+            }
+            m_Controller.SupportedGestures(supportedGestures);
             m_Controller.Enabled(active);
             m_Enabled = active;
+            m_UseNativeProtocol = useNativeProtocol;
+            m_SupportedGestures = supportedGestures;
         }
         catch (hresult_error const& e) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "Failed to update Windows touchpad gestures: 0x%08x",
                         static_cast<unsigned int>(e.code()));
+            cancelNativeForwarding();
+            resetGestureState();
+            m_Enabled = false;
+            m_UseNativeProtocol = false;
         }
     }
 
@@ -144,6 +280,226 @@ private:
         AltTab,
         ShowDesktop
     };
+
+    struct NativeContactState {
+        NativeTouchpadPoint point;
+        bool active;
+    };
+
+    int findNativeContact(uint32_t pointerId) const
+    {
+        for (int slot = 0; slot < MAX_NATIVE_TOUCHPAD_CONTACTS; slot++) {
+            if (m_NativeContacts[slot].active &&
+                    m_NativeContacts[slot].point.pointerId == pointerId) {
+                return slot;
+            }
+        }
+
+        return -1;
+    }
+
+    int findUnusedNativeContact() const
+    {
+        for (int slot = 0; slot < MAX_NATIVE_TOUCHPAD_CONTACTS; slot++) {
+            if (!m_NativeContacts[slot].active) {
+                return slot;
+            }
+        }
+
+        return -1;
+    }
+
+    int activeNativeContactCount() const
+    {
+        int count = 0;
+        for (const auto& contact : m_NativeContacts) {
+            if (contact.active) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    bool sendNativeFrame(const uint8_t* eventTypes,
+                         const NativeTouchpadPoint* points,
+                         uint8_t contactCount,
+                         uint8_t buttonState)
+    {
+        if (contactCount == 0) {
+            return true;
+        }
+
+        uint32_t pointerIds[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        float x[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        float y[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        float pressure[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        for (uint8_t i = 0; i < contactCount; i++) {
+            pointerIds[i] = points[i].pointerId;
+            x[i] = points[i].x;
+            y[i] = points[i].y;
+            pressure[i] = points[i].pressure;
+        }
+
+        const uint32_t hostFeatures = LiGetHostFeatureFlags();
+        int result = LI_ERR_UNSUPPORTED;
+        if (hostFeatures & LI_FF_TOUCHPAD_FRAME_EVENTS) {
+            result = LiSendTouchpadFrameEvent(
+                        contactCount,
+                        eventTypes,
+                        pointerIds,
+                        x,
+                        y,
+                        pressure,
+                        LI_ROT_UNKNOWN,
+                        points[0].deviceWidthMm,
+                        points[0].deviceHeightMm,
+                        buttonState);
+        }
+
+        if (result == LI_ERR_UNSUPPORTED &&
+                (hostFeatures & LI_FF_TOUCHPAD_EVENTS)) {
+            result = 0;
+            for (uint8_t i = 0; i < contactCount; i++) {
+                NativeTouchpadPoint point = points[i];
+                point.buttonState = buttonState;
+                const int contactResult =
+                        sendNativeTouchpadContact(eventTypes[i], point);
+                if (contactResult != 0) {
+                    result = contactResult;
+                    break;
+                }
+            }
+        }
+
+        if (result != 0 && result != LI_ERR_UNSUPPORTED) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "Failed to queue global native touchpad frame: %d",
+                        result);
+        }
+
+        return result != LI_ERR_UNSUPPORTED;
+    }
+
+    bool forwardNativePoint(PointerPoint const& point, uint8_t requestedEventType)
+    {
+        NativeTouchpadPoint nativePoint;
+        if (!getNativeTouchpadPoint(point, nativePoint)) {
+            return false;
+        }
+
+        int slot = findNativeContact(nativePoint.pointerId);
+        uint8_t eventType = requestedEventType;
+
+        if (eventType == LI_TOUCH_EVENT_DOWN) {
+            if (slot >= 0) {
+                eventType = LI_TOUCH_EVENT_MOVE;
+            }
+            else {
+                if (activeNativeContactCount() == 0 && m_Handler != nullptr) {
+                    // A global 3+ finger gesture takes over from the window's
+                    // two-finger stream. End the old stream before reusing IDs.
+                    m_Handler->cancelNativeTouchpadContacts();
+                }
+                slot = findUnusedNativeContact();
+            }
+        }
+        else if (eventType == LI_TOUCH_EVENT_MOVE && slot < 0) {
+            eventType = LI_TOUCH_EVENT_DOWN;
+            if (activeNativeContactCount() == 0 && m_Handler != nullptr) {
+                m_Handler->cancelNativeTouchpadContacts();
+            }
+            slot = findUnusedNativeContact();
+        }
+        else if ((eventType == LI_TOUCH_EVENT_UP ||
+                  eventType == LI_TOUCH_EVENT_CANCEL) &&
+                 slot < 0) {
+            return true;
+        }
+
+        if (slot < 0) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "Global native touchpad gesture exceeded %d contacts",
+                        MAX_NATIVE_TOUCHPAD_CONTACTS);
+            cancelNativeForwarding();
+            return true;
+        }
+
+        m_NativeContacts[slot].point = nativePoint;
+        m_NativeContacts[slot].active = true;
+
+        uint8_t eventTypes[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        NativeTouchpadPoint points[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        uint8_t contactCount = 0;
+
+        if (eventType == LI_TOUCH_EVENT_DOWN) {
+            eventTypes[contactCount] = eventType;
+            points[contactCount] = nativePoint;
+            contactCount++;
+        }
+
+        for (int candidate = 0; candidate < MAX_NATIVE_TOUCHPAD_CONTACTS; candidate++) {
+            if (!m_NativeContacts[candidate].active ||
+                    (eventType == LI_TOUCH_EVENT_DOWN && candidate == slot) ||
+                    ((eventType == LI_TOUCH_EVENT_UP ||
+                      eventType == LI_TOUCH_EVENT_CANCEL) &&
+                     candidate == slot)) {
+                continue;
+            }
+
+            eventTypes[contactCount] = LI_TOUCH_EVENT_MOVE;
+            points[contactCount] = m_NativeContacts[candidate].point;
+            contactCount++;
+        }
+
+        if (eventType == LI_TOUCH_EVENT_UP || eventType == LI_TOUCH_EVENT_CANCEL) {
+            eventTypes[contactCount] = eventType;
+            points[contactCount] = nativePoint;
+            contactCount++;
+        }
+
+        const bool handled = sendNativeFrame(
+                    eventTypes,
+                    points,
+                    contactCount,
+                    nativePoint.buttonState);
+        if (eventType == LI_TOUCH_EVENT_UP || eventType == LI_TOUCH_EVENT_CANCEL) {
+            m_NativeContacts[slot] = {};
+        }
+
+        return handled;
+    }
+
+    void cancelNativeForwarding()
+    {
+        uint8_t eventTypes[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        NativeTouchpadPoint points[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        uint8_t contactCount = 0;
+
+        for (const auto& contact : m_NativeContacts) {
+            if (!contact.active) {
+                continue;
+            }
+
+            eventTypes[contactCount] = LI_TOUCH_EVENT_CANCEL;
+            points[contactCount] = contact.point;
+            points[contactCount].pressure = 0.0f;
+            points[contactCount].buttonState = 0;
+            contactCount++;
+        }
+
+        if (contactCount != 0) {
+            sendNativeFrame(eventTypes, points, contactCount, 0);
+        }
+        m_NativeContacts = {};
+    }
+
+    bool shouldForwardNativeGesture() const
+    {
+        return m_Enabled &&
+                m_UseNativeProtocol &&
+                m_Handler != nullptr &&
+                m_Handler->isCaptureActive();
+    }
 
     void sendKey(short keyCode, bool down, char modifiers)
     {
@@ -218,7 +574,7 @@ private:
     void onGlobalActionPerformed(TouchpadGesturesController const&,
                                  TouchpadGlobalActionEventArgs const& args)
     {
-        if (!shouldHandleGesture()) {
+        if (!shouldHandleLegacyGesture()) {
             return;
         }
 
@@ -240,7 +596,22 @@ private:
     void onPointerPressed(TouchpadGesturesController const&,
                           PointerEventArgs const& args)
     {
-        if (!shouldHandleGesture()) {
+        if (shouldForwardNativeGesture()) {
+            try {
+                if (!forwardNativePoint(args.CurrentPoint(), LI_TOUCH_EVENT_DOWN)) {
+                    cancelNativeForwarding();
+                }
+            }
+            catch (hresult_error const& e) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Failed to read global touchpad down event: 0x%08x",
+                            static_cast<unsigned int>(e.code()));
+                cancelNativeForwarding();
+            }
+            return;
+        }
+
+        if (!shouldHandleLegacyGesture()) {
             return;
         }
 
@@ -259,7 +630,28 @@ private:
     void onPointerMoved(TouchpadGesturesController const&,
                         PointerEventArgs const& args)
     {
-        if (!shouldHandleGesture()) {
+        if (shouldForwardNativeGesture()) {
+            try {
+                const auto points = args.GetIntermediatePoints();
+                for (int index = static_cast<int>(points.Size()) - 1;
+                     index >= 0;
+                     index--) {
+                    if (!forwardNativePoint(points.GetAt(index), LI_TOUCH_EVENT_MOVE)) {
+                        cancelNativeForwarding();
+                        break;
+                    }
+                }
+            }
+            catch (hresult_error const& e) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Failed to read global touchpad move event: 0x%08x",
+                            static_cast<unsigned int>(e.code()));
+                cancelNativeForwarding();
+            }
+            return;
+        }
+
+        if (!shouldHandleLegacyGesture()) {
             return;
         }
 
@@ -276,7 +668,22 @@ private:
     void onPointerReleased(TouchpadGesturesController const&,
                            PointerEventArgs const& args)
     {
-        if (!shouldHandleGesture()) {
+        if (shouldForwardNativeGesture()) {
+            try {
+                if (!forwardNativePoint(args.CurrentPoint(), LI_TOUCH_EVENT_UP)) {
+                    cancelNativeForwarding();
+                }
+            }
+            catch (hresult_error const& e) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Failed to read global touchpad up event: 0x%08x",
+                            static_cast<unsigned int>(e.code()));
+                cancelNativeForwarding();
+            }
+            return;
+        }
+
+        if (!shouldHandleLegacyGesture()) {
             return;
         }
 
@@ -297,7 +704,7 @@ private:
     void onManipulationStarted(PhysicalGestureRecognizer const&,
                                ManipulationStartedEventArgs const&)
     {
-        if (!shouldHandleGesture()) {
+        if (!shouldHandleLegacyGesture()) {
             return;
         }
 
@@ -309,7 +716,7 @@ private:
     void onManipulationUpdated(PhysicalGestureRecognizer const&,
                                ManipulationUpdatedEventArgs const& args)
     {
-        if (!shouldHandleGesture()) {
+        if (!shouldHandleLegacyGesture()) {
             return;
         }
 
@@ -374,7 +781,7 @@ private:
     void onManipulationCompleted(PhysicalGestureRecognizer const&,
                                  ManipulationCompletedEventArgs const& args)
     {
-        if (!shouldHandleGesture()) {
+        if (!shouldHandleLegacyGesture()) {
             resetGestureState();
             return;
         }
@@ -402,7 +809,7 @@ private:
         resetGestureState();
     }
 
-    bool shouldHandleGesture()
+    bool shouldHandleLegacyGesture()
     {
         if (!m_Enabled || m_Handler == nullptr || !m_Handler->isSystemKeyCaptureActive()) {
             resetGestureState();
@@ -414,6 +821,7 @@ private:
 
     bool m_Initialized = false;
     bool m_Enabled = false;
+    bool m_UseNativeProtocol = false;
     SdlInputHandler* m_Handler = nullptr;
     TouchpadGesturesController m_Controller{ nullptr };
     PhysicalGestureRecognizer m_Recognizer{ nullptr };
@@ -430,6 +838,9 @@ private:
     int m_LastNavStepX = 0;
     int m_LastNavStepY = 0;
     bool m_AltTabActive = false;
+    TouchpadGlobalGestureKinds m_SupportedGestures =
+            TouchpadGlobalGestureKinds::None;
+    std::array<NativeContactState, MAX_NATIVE_TOUCHPAD_CONTACTS> m_NativeContacts{};
 };
 
 GlobalTouchpadGestureState s_GlobalTouchpadGestures;

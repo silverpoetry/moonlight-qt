@@ -47,6 +47,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_TouchpadSuppressNextCtrlWheel(false),
       m_TouchpadSuppressedCtrlDown{false, false},
       m_TouchpadLastFrameId(0),
+      m_NativeTouchpadButtonState(0),
       m_TouchpadCachedDevice(nullptr),
       m_TouchpadCachedDeviceLeft(0),
       m_TouchpadCachedDeviceTop(0),
@@ -226,6 +227,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     SDL_zero(m_TouchpadHavePosition);
     SDL_zero(m_TouchpadX);
     SDL_zero(m_TouchpadY);
+    SDL_zero(m_NativeTouchpadContacts);
 }
 
 SdlInputHandler::~SdlInputHandler()
@@ -348,7 +350,11 @@ void SdlInputHandler::notifyFocusLost()
 
 void SdlInputHandler::notifyFocusGained()
 {
-    updateTouchpadGlobalGesturesEnabled(m_EnableTouchpadGestures && isSystemKeyCaptureActive());
+    updateTouchpadGlobalGesturesEnabled(
+                m_EnableTouchpadGestures &&
+                (isNativeTouchpadProtocolSupported() ?
+                     isCaptureActive() :
+                     isSystemKeyCaptureActive()));
 }
 
 bool SdlInputHandler::isCaptureActive()
@@ -383,7 +389,11 @@ void SdlInputHandler::updateKeyboardGrabState()
 #endif
 
     m_KeyboardCaptureActive = shouldGrab;
-    updateTouchpadGlobalGesturesEnabled(m_EnableTouchpadGestures && shouldGrab);
+    updateTouchpadGlobalGesturesEnabled(
+                m_EnableTouchpadGestures &&
+                (isNativeTouchpadProtocolSupported() ?
+                     isCaptureActive() :
+                     shouldGrab));
 }
 
 bool SdlInputHandler::isSystemKeyCaptureActive()

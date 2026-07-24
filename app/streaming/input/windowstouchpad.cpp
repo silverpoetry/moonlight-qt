@@ -4,12 +4,17 @@
 
 #ifdef Q_OS_WIN32
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <windows.h>
 
 namespace {
 typedef BOOL (WINAPI *RegisterTouchpadCapableWindowFn)(HWND hwnd, BOOL touchpadCapable);
 typedef BOOL (WINAPI *SkipPointerFrameMessagesFn)(UINT32 pointerId);
+typedef BOOL (WINAPI *GetPointerFrameTouchpadInfoFn)(UINT32 pointerId,
+                                                     UINT32* pointerCount,
+                                                     POINTER_TOUCH_INFO* touchpadInfo);
 
 constexpr float PINCH_DISTANCE_THRESHOLD = 0.025f;
 constexpr float PINCH_CTRL_WHEEL_GUARD_THRESHOLD = 0.010f;
@@ -19,11 +24,15 @@ constexpr Uint32 TOUCHPAD_CTRL_WHEEL_SUPPRESS_MS = 180;
 constexpr Uint32 LOCAL_CLOSE_PASSTHROUGH_QUIT_MS = 750;
 constexpr short REMOTE_VK_F4 = 0x73;
 constexpr short REMOTE_VK_LMENU = 0xA4;
+constexpr int HIMETRIC_PER_MM = 100;
+constexpr WORD REGISTER_TOUCHPAD_CAPABLE_WINDOW_ORDINAL = 2689;
+constexpr WORD GET_POINTER_FRAME_TOUCHPAD_INFO_ORDINAL = 2693;
 constexpr wchar_t MESSAGE_HOOK_HANDLER_PROP[] = L"MoonlightNativeMessageHandler";
 constexpr wchar_t MESSAGE_HOOK_PREV_PROC_PROP[] = L"MoonlightNativeMessagePrevProc";
 
 RegisterTouchpadCapableWindowFn pRegisterTouchpadCapableWindow = nullptr;
 SkipPointerFrameMessagesFn pSkipPointerFrameMessages = nullptr;
+GetPointerFrameTouchpadInfoFn pGetPointerFrameTouchpadInfo = nullptr;
 bool s_TouchpadApiLoaded = false;
 
 LRESULT CALLBACK nativeMessageHookWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -37,6 +46,25 @@ LRESULT CALLBACK nativeMessageHookWndProc(HWND hwnd, UINT message, WPARAM wParam
         if (handler->handleNativeTouchpadWheelMessage(message, wParam) ||
                 handler->handleNativeWindowCloseMessage(message, wParam)) {
             return 0;
+        }
+
+        if (handler->isNativeTouchpadProtocolSupported() &&
+                (message == WM_POINTERDOWN ||
+                 message == WM_POINTERUPDATE ||
+                 message == WM_POINTERUP ||
+                 message == WM_POINTERCAPTURECHANGED)) {
+            SDL_SysWMmsg sysWmMessage = {};
+            sysWmMessage.version.major = SDL_MAJOR_VERSION;
+            sysWmMessage.version.minor = SDL_MINOR_VERSION;
+            sysWmMessage.version.patch = SDL_PATCHLEVEL;
+            sysWmMessage.subsystem = SDL_SYSWM_WINDOWS;
+            sysWmMessage.msg.win.hwnd = hwnd;
+            sysWmMessage.msg.win.msg = message;
+            sysWmMessage.msg.win.wParam = wParam;
+            sysWmMessage.msg.win.lParam = lParam;
+            if (handler->handleSystemWindowEvent(&sysWmMessage)) {
+                return 0;
+            }
         }
     }
 
@@ -63,9 +91,91 @@ void loadTouchpadApi()
     if (user32 != nullptr) {
         pRegisterTouchpadCapableWindow = reinterpret_cast<RegisterTouchpadCapableWindowFn>(
                     GetProcAddress(user32, "RegisterTouchpadCapableWindow"));
+        if (pRegisterTouchpadCapableWindow == nullptr) {
+            pRegisterTouchpadCapableWindow = reinterpret_cast<RegisterTouchpadCapableWindowFn>(
+                        GetProcAddress(user32,
+                                       MAKEINTRESOURCEA(REGISTER_TOUCHPAD_CAPABLE_WINDOW_ORDINAL)));
+        }
         pSkipPointerFrameMessages = reinterpret_cast<SkipPointerFrameMessagesFn>(
                     GetProcAddress(user32, "SkipPointerFrameMessages"));
+        pGetPointerFrameTouchpadInfo = reinterpret_cast<GetPointerFrameTouchpadInfoFn>(
+                    GetProcAddress(user32, "GetPointerFrameTouchpadInfo"));
+        if (pGetPointerFrameTouchpadInfo == nullptr) {
+            pGetPointerFrameTouchpadInfo = reinterpret_cast<GetPointerFrameTouchpadInfoFn>(
+                        GetProcAddress(user32,
+                                       MAKEINTRESOURCEA(GET_POINTER_FRAME_TOUCHPAD_INFO_ORDINAL)));
+        }
     }
+}
+
+uint16_t himetricToMillimeters(int himetric)
+{
+    const long millimeters = std::lround(
+                std::fabs(static_cast<double>(himetric)) / HIMETRIC_PER_MM);
+    return static_cast<uint16_t>(
+                std::clamp<long>(millimeters,
+                                 0,
+                                 std::numeric_limits<uint16_t>::max()));
+}
+
+int sendNativeTouchpadChanges(uint32_t hostFeatures,
+                              int changeCount,
+                              const uint8_t* eventTypes,
+                              const uint32_t* pointerIds,
+                              const float* x,
+                              const float* y,
+                              const float* pressure,
+                              uint16_t deviceWidthMm,
+                              uint16_t deviceHeightMm,
+                              uint8_t buttonState)
+{
+    int result = LI_ERR_UNSUPPORTED;
+    if (hostFeatures & LI_FF_TOUCHPAD_FRAME_EVENTS) {
+        result = 0;
+        for (int offset = 0; offset < changeCount; offset += MAX_NATIVE_TOUCHPAD_CONTACTS) {
+            const uint8_t contactsInPacket = static_cast<uint8_t>(
+                        std::min(changeCount - offset, MAX_NATIVE_TOUCHPAD_CONTACTS));
+            const int frameResult = LiSendTouchpadFrameEvent(
+                        contactsInPacket,
+                        eventTypes + offset,
+                        pointerIds + offset,
+                        x + offset,
+                        y + offset,
+                        pressure + offset,
+                        LI_ROT_UNKNOWN,
+                        deviceWidthMm,
+                        deviceHeightMm,
+                        buttonState);
+            if (frameResult != 0) {
+                result = frameResult;
+                break;
+            }
+        }
+    }
+
+    if (result == LI_ERR_UNSUPPORTED && (hostFeatures & LI_FF_TOUCHPAD_EVENTS)) {
+        result = 0;
+        for (int i = 0; i < changeCount; i++) {
+            const int contactResult = LiSendTouchpadEvent(
+                        eventTypes[i],
+                        pointerIds[i],
+                        x[i],
+                        y[i],
+                        pressure[i],
+                        0.0f,
+                        0.0f,
+                        LI_ROT_UNKNOWN,
+                        deviceWidthMm,
+                        deviceHeightMm,
+                        buttonState);
+            if (contactResult != 0) {
+                result = contactResult;
+                break;
+            }
+        }
+    }
+
+    return result;
 }
 }
 
@@ -284,6 +394,277 @@ void SdlInputHandler::registerTouchpadWindow()
 #endif
 }
 
+bool SdlInputHandler::isNativeTouchpadProtocolSupported() const
+{
+    const uint32_t hostFeatures = LiGetHostFeatureFlags();
+    return (hostFeatures & (LI_FF_TOUCHPAD_FRAME_EVENTS | LI_FF_TOUCHPAD_EVENTS)) != 0;
+}
+
+bool SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
+{
+#ifdef Q_OS_WIN32
+    const uint32_t hostFeatures = LiGetHostFeatureFlags();
+    if (!(hostFeatures & (LI_FF_TOUCHPAD_FRAME_EVENTS | LI_FF_TOUCHPAD_EVENTS))) {
+        return false;
+    }
+
+    loadTouchpadApi();
+
+    POINTER_TOUCH_INFO contacts[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+    UINT32 pointerCount = MAX_NATIVE_TOUCHPAD_CONTACTS;
+    bool haveExtendedTouchpadInfo = false;
+
+    if (pGetPointerFrameTouchpadInfo != nullptr &&
+            pGetPointerFrameTouchpadInfo(pointerId, &pointerCount, contacts)) {
+        haveExtendedTouchpadInfo = true;
+    }
+    else {
+        POINTER_INFO pointerInfo[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        pointerCount = MAX_NATIVE_TOUCHPAD_CONTACTS;
+        if (!GetPointerFrameInfo(pointerId, &pointerCount, pointerInfo)) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "Failed to read native touchpad frame: %lu",
+                        GetLastError());
+            return false;
+        }
+
+        for (UINT32 i = 0; i < pointerCount; i++) {
+            contacts[i].pointerInfo = pointerInfo[i];
+        }
+    }
+
+    if (pointerCount == 0) {
+        uint8_t eventTypes[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        uint32_t pointerIds[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        float x[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        float y[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        float pressure[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+        int changeCount = 0;
+
+        for (int slot = 0; slot < MAX_NATIVE_TOUCHPAD_CONTACTS; slot++) {
+            auto& contact = m_NativeTouchpadContacts[slot];
+            if (!contact.active) {
+                continue;
+            }
+
+            eventTypes[changeCount] = LI_TOUCH_EVENT_UP;
+            pointerIds[changeCount] = contact.pointerId;
+            x[changeCount] = contact.x;
+            y[changeCount] = contact.y;
+            pressure[changeCount] = 0.0f;
+            changeCount++;
+            contact.active = false;
+        }
+
+        const int result = sendNativeTouchpadChanges(
+                    hostFeatures,
+                    changeCount,
+                    eventTypes,
+                    pointerIds,
+                    x,
+                    y,
+                    pressure,
+                    himetricToMillimeters(m_TouchpadCachedDeviceWidth),
+                    himetricToMillimeters(m_TouchpadCachedDeviceHeight),
+                    0);
+        m_NativeTouchpadButtonState = 0;
+        m_TouchpadLastFrameId = 0;
+
+        if (result != 0 && result != LI_ERR_UNSUPPORTED) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "Failed to queue final native touchpad frame: %d",
+                        result);
+        }
+        return result != LI_ERR_UNSUPPORTED;
+    }
+
+    if (contacts[0].pointerInfo.frameId == m_TouchpadLastFrameId) {
+        return true;
+    }
+    m_TouchpadLastFrameId = contacts[0].pointerInfo.frameId;
+
+    const POINTER_INFO& firstPointer = contacts[0].pointerInfo;
+    if (m_TouchpadCachedDevice != firstPointer.sourceDevice ||
+            m_TouchpadCachedDeviceWidth == 0 ||
+            m_TouchpadCachedDeviceHeight == 0) {
+        bool hadActiveContact = false;
+        for (int slot = 0; slot < MAX_NATIVE_TOUCHPAD_CONTACTS; slot++) {
+            hadActiveContact = hadActiveContact || m_NativeTouchpadContacts[slot].active;
+        }
+        if (hadActiveContact) {
+            cancelNativeTouchpadContacts();
+            m_TouchpadLastFrameId = firstPointer.frameId;
+        }
+
+        RECT deviceRect;
+        RECT displayRect;
+        if (!GetPointerDeviceRects(firstPointer.sourceDevice, &deviceRect, &displayRect) ||
+                deviceRect.right == deviceRect.left ||
+                deviceRect.bottom == deviceRect.top) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "GetPointerDeviceRects failed for native touchpad input: %lu",
+                        GetLastError());
+            return false;
+        }
+
+        m_TouchpadCachedDevice = firstPointer.sourceDevice;
+        m_TouchpadCachedDeviceLeft = deviceRect.left;
+        m_TouchpadCachedDeviceTop = deviceRect.top;
+        m_TouchpadCachedDeviceWidth = deviceRect.right - deviceRect.left;
+        m_TouchpadCachedDeviceHeight = deviceRect.bottom - deviceRect.top;
+    }
+
+    constexpr int MAX_FRAME_CHANGES = MAX_NATIVE_TOUCHPAD_CONTACTS * 2;
+    uint8_t eventTypes[MAX_FRAME_CHANGES] = {};
+    uint32_t pointerIds[MAX_FRAME_CHANGES] = {};
+    float x[MAX_FRAME_CHANGES] = {};
+    float y[MAX_FRAME_CHANGES] = {};
+    float pressure[MAX_FRAME_CHANGES] = {};
+    bool seenSlots[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+    int changeCount = 0;
+    uint8_t buttonState = 0;
+
+    for (UINT32 i = 0; i < pointerCount; i++) {
+        const POINTER_TOUCH_INFO& touchInfo = contacts[i];
+        const POINTER_INFO& pointerInfo = touchInfo.pointerInfo;
+
+        if (pointerInfo.pointerFlags & POINTER_FLAG_FIRSTBUTTON) {
+            buttonState |= LI_TOUCHPAD_BUTTON_PRIMARY;
+        }
+
+        int slot = -1;
+        for (int candidate = 0; candidate < MAX_NATIVE_TOUCHPAD_CONTACTS; candidate++) {
+            if (m_NativeTouchpadContacts[candidate].active &&
+                    m_NativeTouchpadContacts[candidate].pointerId == pointerInfo.pointerId) {
+                slot = candidate;
+                break;
+            }
+        }
+
+        const bool inContact = (pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
+        if (inContact && slot < 0) {
+            for (int candidate = 0; candidate < MAX_NATIVE_TOUCHPAD_CONTACTS; candidate++) {
+                if (!m_NativeTouchpadContacts[candidate].active) {
+                    slot = candidate;
+                    break;
+                }
+            }
+
+            if (slot < 0) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Native touchpad frame exceeded %d active contacts",
+                            MAX_NATIVE_TOUCHPAD_CONTACTS);
+                cancelNativeTouchpadContacts();
+                return true;
+            }
+        }
+
+        if (slot < 0) {
+            continue;
+        }
+
+        seenSlots[slot] = true;
+        auto& contact = m_NativeTouchpadContacts[slot];
+
+        float contactX = contact.x;
+        float contactY = contact.y;
+        float contactPressure = 0.0f;
+        if (inContact) {
+            contactX = qBound(
+                        0.0f,
+                        static_cast<float>(pointerInfo.ptHimetricLocation.x -
+                                           m_TouchpadCachedDeviceLeft) /
+                                static_cast<float>(m_TouchpadCachedDeviceWidth),
+                        1.0f);
+            contactY = qBound(
+                        0.0f,
+                        static_cast<float>(pointerInfo.ptHimetricLocation.y -
+                                           m_TouchpadCachedDeviceTop) /
+                                static_cast<float>(m_TouchpadCachedDeviceHeight),
+                        1.0f);
+            if (haveExtendedTouchpadInfo &&
+                    (touchInfo.touchMask & TOUCH_MASK_PRESSURE)) {
+                contactPressure = qBound(
+                            0.0f,
+                            static_cast<float>(touchInfo.pressure) / 1024.0f,
+                            1.0f);
+            }
+        }
+
+        uint8_t eventType;
+        if (inContact && !contact.active) {
+            eventType = LI_TOUCH_EVENT_DOWN;
+        }
+        else if (inContact) {
+            eventType = LI_TOUCH_EVENT_MOVE;
+        }
+        else if (pointerInfo.pointerFlags & POINTER_FLAG_CANCELED) {
+            eventType = LI_TOUCH_EVENT_CANCEL;
+        }
+        else {
+            eventType = LI_TOUCH_EVENT_UP;
+        }
+
+        eventTypes[changeCount] = eventType;
+        pointerIds[changeCount] = pointerInfo.pointerId;
+        x[changeCount] = contactX;
+        y[changeCount] = contactY;
+        pressure[changeCount] = contactPressure;
+        changeCount++;
+
+        contact.pointerId = pointerInfo.pointerId;
+        contact.x = contactX;
+        contact.y = contactY;
+        contact.pressure = contactPressure;
+        contact.active = inContact;
+    }
+
+    // The frame API reports all contacts that are still active. Any contact that
+    // disappeared from the frame must be ended so the host cannot retain a stale slot.
+    for (int slot = 0; slot < MAX_NATIVE_TOUCHPAD_CONTACTS; slot++) {
+        auto& contact = m_NativeTouchpadContacts[slot];
+        if (!contact.active || seenSlots[slot]) {
+            continue;
+        }
+
+        eventTypes[changeCount] = LI_TOUCH_EVENT_UP;
+        pointerIds[changeCount] = contact.pointerId;
+        x[changeCount] = contact.x;
+        y[changeCount] = contact.y;
+        pressure[changeCount] = 0.0f;
+        changeCount++;
+        contact.active = false;
+    }
+
+    const uint16_t deviceWidthMm = himetricToMillimeters(m_TouchpadCachedDeviceWidth);
+    const uint16_t deviceHeightMm = himetricToMillimeters(m_TouchpadCachedDeviceHeight);
+
+    const int result = sendNativeTouchpadChanges(
+                hostFeatures,
+                changeCount,
+                eventTypes,
+                pointerIds,
+                x,
+                y,
+                pressure,
+                deviceWidthMm,
+                deviceHeightMm,
+                buttonState);
+
+    m_NativeTouchpadButtonState = buttonState;
+    if (result != 0 && result != LI_ERR_UNSUPPORTED) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Failed to queue native touchpad frame: %d",
+                    result);
+    }
+
+    return result != LI_ERR_UNSUPPORTED;
+#else
+    Q_UNUSED(pointerId);
+    return false;
+#endif
+}
+
 bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
 {
 #ifdef Q_OS_WIN32
@@ -331,6 +712,14 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
 
     if (!isCaptureActive()) {
         return false;
+    }
+
+    if (isNativeTouchpadProtocolSupported()) {
+        const bool handled = handleNativeTouchpadProtocolFrame(pointerId);
+        if (handled && pSkipPointerFrameMessages != nullptr) {
+            pSkipPointerFrameMessages(pointerId);
+        }
+        return handled;
     }
 
     UINT32 pointerCount = 0;
@@ -572,6 +961,70 @@ bool SdlInputHandler::isTouchpadCtrlFallbackActive() const
 
 void SdlInputHandler::cancelNativeTouchpadContacts()
 {
+    uint8_t nativeEventTypes[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+    uint32_t nativePointerIds[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+    float nativeX[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+    float nativeY[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+    float nativePressure[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
+    uint8_t nativeContactCount = 0;
+
+    for (int slot = 0; slot < MAX_NATIVE_TOUCHPAD_CONTACTS; slot++) {
+        const auto& contact = m_NativeTouchpadContacts[slot];
+        if (!contact.active) {
+            continue;
+        }
+
+        nativeEventTypes[nativeContactCount] = LI_TOUCH_EVENT_CANCEL;
+        nativePointerIds[nativeContactCount] = contact.pointerId;
+        nativeX[nativeContactCount] = contact.x;
+        nativeY[nativeContactCount] = contact.y;
+        nativePressure[nativeContactCount] = 0.0f;
+        nativeContactCount++;
+    }
+
+    if (nativeContactCount != 0 || m_NativeTouchpadButtonState != 0) {
+        const uint32_t hostFeatures = LiGetHostFeatureFlags();
+        const uint16_t deviceWidthMm =
+                himetricToMillimeters(m_TouchpadCachedDeviceWidth);
+        const uint16_t deviceHeightMm =
+                himetricToMillimeters(m_TouchpadCachedDeviceHeight);
+
+        int result = LI_ERR_UNSUPPORTED;
+        if (nativeContactCount != 0 &&
+                (hostFeatures & LI_FF_TOUCHPAD_FRAME_EVENTS)) {
+            result = LiSendTouchpadFrameEvent(
+                        nativeContactCount,
+                        nativeEventTypes,
+                        nativePointerIds,
+                        nativeX,
+                        nativeY,
+                        nativePressure,
+                        LI_ROT_UNKNOWN,
+                        deviceWidthMm,
+                        deviceHeightMm,
+                        0);
+        }
+
+        if (result == LI_ERR_UNSUPPORTED &&
+                (hostFeatures & LI_FF_TOUCHPAD_EVENTS)) {
+            LiSendTouchpadEvent(
+                        LI_TOUCH_EVENT_CANCEL_ALL,
+                        0,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        LI_ROT_UNKNOWN,
+                        deviceWidthMm,
+                        deviceHeightMm,
+                        0);
+        }
+    }
+
+    SDL_zero(m_NativeTouchpadContacts);
+    m_NativeTouchpadButtonState = 0;
+
     bool hadContact = false;
     for (int slot = 0; slot < MAX_FINGERS; slot++) {
         if (m_TouchpadContactDown[slot]) {
@@ -594,4 +1047,9 @@ void SdlInputHandler::cancelNativeTouchpadContacts()
     m_TouchpadSuppressWheelUntil = 0;
     m_TouchpadSuppressNextCtrlWheel = false;
     m_TouchpadLastFrameId = 0;
+    m_TouchpadCachedDevice = nullptr;
+    m_TouchpadCachedDeviceLeft = 0;
+    m_TouchpadCachedDeviceTop = 0;
+    m_TouchpadCachedDeviceWidth = 0;
+    m_TouchpadCachedDeviceHeight = 0;
 }
