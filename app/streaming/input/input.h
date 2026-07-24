@@ -153,6 +153,12 @@ public:
 
     void cancelNativeTouchpadContacts();
 
+    void setTouchpadGlobalNativeForwardingEnabled(bool enabled);
+
+    void beginTouchpadGlobalNativeForwarding();
+
+    void endTouchpadGlobalNativeForwarding();
+
     bool isNativeTouchpadProtocolSupported() const;
 
     int getAttachedGamepadMask();
@@ -181,6 +187,18 @@ public:
     QString getUnmappedGamepads();
 
 private:
+    enum class NativeTouchpadFrameResult {
+        Unhandled,
+        Handled,
+        HandledAndSkipRemaining
+    };
+
+    enum class NativeTouchpadOwner {
+        None,
+        Window,
+        Global
+    };
+
     enum KeyCombo {
         KeyComboQuit,
         KeyComboUngrabInput,
@@ -213,7 +231,7 @@ private:
 
     void performSpecialKeyCombo(KeyCombo combo);
 
-    bool handleNativeTouchpadProtocolFrame(uint32_t pointerId);
+    NativeTouchpadFrameResult handleNativeTouchpadProtocolFrame(uint32_t pointerId);
 
     bool isTouchpadCtrlFallbackActive() const;
 
@@ -302,6 +320,8 @@ private:
     bool m_TouchpadSuppressNextCtrlWheel;
     bool m_TouchpadSuppressedCtrlDown[2];
     uint32_t m_TouchpadLastFrameId;
+    bool m_TouchpadGlobalNativeForwardingEnabled;
+    NativeTouchpadOwner m_NativeTouchpadOwner;
     struct {
         uint32_t pointerId;
         float x;
@@ -309,7 +329,6 @@ private:
         float pressure;
         bool active;
     } m_NativeTouchpadContacts[MAX_NATIVE_TOUCHPAD_CONTACTS];
-    uint8_t m_NativeTouchpadButtonState;
     void* m_TouchpadCachedDevice;
     int m_TouchpadCachedDeviceLeft;
     int m_TouchpadCachedDeviceTop;

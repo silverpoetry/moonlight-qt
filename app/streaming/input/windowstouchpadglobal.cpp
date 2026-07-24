@@ -46,7 +46,6 @@ struct NativeTouchpadPoint
     float pressure;
     uint16_t deviceWidthMm;
     uint16_t deviceHeightMm;
-    uint8_t buttonState;
 };
 
 bool nativeTouchpadProtocolSupported()
@@ -75,6 +74,9 @@ bool getNativeTouchpadPoint(PointerPoint const& point, NativeTouchpadPoint& nati
 
         const auto position = physicalPosition.PhysicalPosition();
         const auto properties = point.Properties();
+        // IsLeftButtonPressed() is the primary contact action for touch-class
+        // pointers, so it is true while a finger is touching the pad. Physical
+        // touchpad button actions must not be inferred from this property.
         const auto physicalUnitsToMillimeters = [](float physicalUnits) {
             const long millimeters = std::lround(
                         std::fabs(physicalUnits) *
@@ -98,9 +100,6 @@ bool getNativeTouchpadPoint(PointerPoint const& point, NativeTouchpadPoint& nati
         nativePoint.pressure = std::clamp(properties.Pressure(), 0.0f, 1.0f);
         nativePoint.deviceWidthMm = physicalUnitsToMillimeters(deviceRect.Width);
         nativePoint.deviceHeightMm = physicalUnitsToMillimeters(deviceRect.Height);
-        nativePoint.buttonState = properties.IsLeftButtonPressed() ?
-                    LI_TOUCHPAD_BUTTON_PRIMARY :
-                    0;
         return true;
     }
     catch (hresult_error const& e) {
@@ -129,7 +128,7 @@ int sendNativeTouchpadContact(uint8_t eventType, const NativeTouchpadPoint& poin
                 LI_ROT_UNKNOWN,
                 point.deviceWidthMm,
                 point.deviceHeightMm,
-                point.buttonState);
+                0);
 }
 
 class GlobalTouchpadGestureState
@@ -204,17 +203,27 @@ public:
 
     void setEnabled(SdlInputHandler* handler, bool enabled)
     {
+        if (enabled && m_Handler != nullptr && m_Handler != handler) {
+            cancelNativeForwarding();
+            m_Handler->setTouchpadGlobalNativeForwardingEnabled(false);
+        }
+
         if (enabled) {
             initialize(handler);
         }
-        else if (handler == m_Handler) {
-            m_Handler = nullptr;
-        }
+        const bool detachHandler = !enabled && handler == m_Handler;
 
         if (!m_Controller) {
             cancelNativeForwarding();
             resetGestureState();
             m_Enabled = false;
+            m_UseNativeProtocol = false;
+            if (m_Handler != nullptr) {
+                m_Handler->setTouchpadGlobalNativeForwardingEnabled(false);
+            }
+            if (detachHandler) {
+                m_Handler = nullptr;
+            }
             return;
         }
 
@@ -243,6 +252,13 @@ public:
         if (m_Enabled == active &&
                 m_UseNativeProtocol == useNativeProtocol &&
                 m_SupportedGestures == supportedGestures) {
+            if (m_Handler != nullptr) {
+                m_Handler->setTouchpadGlobalNativeForwardingEnabled(useNativeProtocol);
+            }
+            if (detachHandler) {
+                m_Handler->setTouchpadGlobalNativeForwardingEnabled(false);
+                m_Handler = nullptr;
+            }
             return;
         }
 
@@ -262,6 +278,9 @@ public:
             m_Enabled = active;
             m_UseNativeProtocol = useNativeProtocol;
             m_SupportedGestures = supportedGestures;
+            if (m_Handler != nullptr) {
+                m_Handler->setTouchpadGlobalNativeForwardingEnabled(useNativeProtocol);
+            }
         }
         catch (hresult_error const& e) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
@@ -271,6 +290,16 @@ public:
             resetGestureState();
             m_Enabled = false;
             m_UseNativeProtocol = false;
+            if (m_Handler != nullptr) {
+                m_Handler->setTouchpadGlobalNativeForwardingEnabled(false);
+            }
+        }
+
+        if (detachHandler) {
+            if (m_Handler != nullptr) {
+                m_Handler->setTouchpadGlobalNativeForwardingEnabled(false);
+            }
+            m_Handler = nullptr;
         }
     }
 
@@ -322,8 +351,7 @@ private:
 
     bool sendNativeFrame(const uint8_t* eventTypes,
                          const NativeTouchpadPoint* points,
-                         uint8_t contactCount,
-                         uint8_t buttonState)
+                         uint8_t contactCount)
     {
         if (contactCount == 0) {
             return true;
@@ -353,17 +381,15 @@ private:
                         LI_ROT_UNKNOWN,
                         points[0].deviceWidthMm,
                         points[0].deviceHeightMm,
-                        buttonState);
+                        0);
         }
 
         if (result == LI_ERR_UNSUPPORTED &&
                 (hostFeatures & LI_FF_TOUCHPAD_EVENTS)) {
             result = 0;
             for (uint8_t i = 0; i < contactCount; i++) {
-                NativeTouchpadPoint point = points[i];
-                point.buttonState = buttonState;
                 const int contactResult =
-                        sendNativeTouchpadContact(eventTypes[i], point);
+                        sendNativeTouchpadContact(eventTypes[i], points[i]);
                 if (contactResult != 0) {
                     result = contactResult;
                     break;
@@ -396,9 +422,7 @@ private:
             }
             else {
                 if (activeNativeContactCount() == 0 && m_Handler != nullptr) {
-                    // A global 3+ finger gesture takes over from the window's
-                    // two-finger stream. End the old stream before reusing IDs.
-                    m_Handler->cancelNativeTouchpadContacts();
+                    m_Handler->beginTouchpadGlobalNativeForwarding();
                 }
                 slot = findUnusedNativeContact();
             }
@@ -406,7 +430,7 @@ private:
         else if (eventType == LI_TOUCH_EVENT_MOVE && slot < 0) {
             eventType = LI_TOUCH_EVENT_DOWN;
             if (activeNativeContactCount() == 0 && m_Handler != nullptr) {
-                m_Handler->cancelNativeTouchpadContacts();
+                m_Handler->beginTouchpadGlobalNativeForwarding();
             }
             slot = findUnusedNativeContact();
         }
@@ -460,10 +484,12 @@ private:
         const bool handled = sendNativeFrame(
                     eventTypes,
                     points,
-                    contactCount,
-                    nativePoint.buttonState);
+                    contactCount);
         if (eventType == LI_TOUCH_EVENT_UP || eventType == LI_TOUCH_EVENT_CANCEL) {
             m_NativeContacts[slot] = {};
+            if (activeNativeContactCount() == 0 && m_Handler != nullptr) {
+                m_Handler->endTouchpadGlobalNativeForwarding();
+            }
         }
 
         return handled;
@@ -483,14 +509,16 @@ private:
             eventTypes[contactCount] = LI_TOUCH_EVENT_CANCEL;
             points[contactCount] = contact.point;
             points[contactCount].pressure = 0.0f;
-            points[contactCount].buttonState = 0;
             contactCount++;
         }
 
         if (contactCount != 0) {
-            sendNativeFrame(eventTypes, points, contactCount, 0);
+            sendNativeFrame(eventTypes, points, contactCount);
         }
         m_NativeContacts = {};
+        if (m_Handler != nullptr) {
+            m_Handler->endTouchpadGlobalNativeForwarding();
+        }
     }
 
     bool shouldForwardNativeGesture() const

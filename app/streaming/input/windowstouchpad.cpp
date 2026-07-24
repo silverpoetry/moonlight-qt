@@ -25,6 +25,7 @@ constexpr Uint32 LOCAL_CLOSE_PASSTHROUGH_QUIT_MS = 750;
 constexpr short REMOTE_VK_F4 = 0x73;
 constexpr short REMOTE_VK_LMENU = 0xA4;
 constexpr int HIMETRIC_PER_MM = 100;
+constexpr UINT32 GLOBAL_TOUCHPAD_MIN_CONTACTS = 3;
 constexpr WORD REGISTER_TOUCHPAD_CAPABLE_WINDOW_ORDINAL = 2689;
 constexpr WORD GET_POINTER_FRAME_TOUCHPAD_INFO_ORDINAL = 2693;
 constexpr wchar_t MESSAGE_HOOK_HANDLER_PROP[] = L"MoonlightNativeMessageHandler";
@@ -400,12 +401,13 @@ bool SdlInputHandler::isNativeTouchpadProtocolSupported() const
     return (hostFeatures & (LI_FF_TOUCHPAD_FRAME_EVENTS | LI_FF_TOUCHPAD_EVENTS)) != 0;
 }
 
-bool SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
+SdlInputHandler::NativeTouchpadFrameResult
+SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
 {
 #ifdef Q_OS_WIN32
     const uint32_t hostFeatures = LiGetHostFeatureFlags();
     if (!(hostFeatures & (LI_FF_TOUCHPAD_FRAME_EVENTS | LI_FF_TOUCHPAD_EVENTS))) {
-        return false;
+        return NativeTouchpadFrameResult::Unhandled;
     }
 
     loadTouchpadApi();
@@ -425,12 +427,28 @@ bool SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "Failed to read native touchpad frame: %lu",
                         GetLastError());
-            return false;
+            return NativeTouchpadFrameResult::Unhandled;
         }
 
         for (UINT32 i = 0; i < pointerCount; i++) {
             contacts[i].pointerInfo = pointerInfo[i];
         }
+    }
+
+    const bool globalOwnsSequence =
+            m_NativeTouchpadOwner == NativeTouchpadOwner::Global;
+    const bool reservedForGlobalController =
+            m_TouchpadGlobalNativeForwardingEnabled &&
+            pointerCount >= GLOBAL_TOUCHPAD_MIN_CONTACTS;
+    if (globalOwnsSequence || reservedForGlobalController) {
+        if (m_NativeTouchpadOwner == NativeTouchpadOwner::Window) {
+            cancelNativeTouchpadContacts();
+        }
+
+        // TouchpadGesturesController consumes the same physical input while
+        // forwarding 3+ finger gestures. Do not call SkipPointerFrameMessages()
+        // for these frames because the controller requires the complete stream.
+        return NativeTouchpadFrameResult::Handled;
     }
 
     if (pointerCount == 0) {
@@ -467,19 +485,23 @@ bool SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
                     himetricToMillimeters(m_TouchpadCachedDeviceWidth),
                     himetricToMillimeters(m_TouchpadCachedDeviceHeight),
                     0);
-        m_NativeTouchpadButtonState = 0;
         m_TouchpadLastFrameId = 0;
+        if (m_NativeTouchpadOwner == NativeTouchpadOwner::Window) {
+            m_NativeTouchpadOwner = NativeTouchpadOwner::None;
+        }
 
         if (result != 0 && result != LI_ERR_UNSUPPORTED) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "Failed to queue final native touchpad frame: %d",
                         result);
         }
-        return result != LI_ERR_UNSUPPORTED;
+        return result == LI_ERR_UNSUPPORTED ?
+                    NativeTouchpadFrameResult::Unhandled :
+                    NativeTouchpadFrameResult::HandledAndSkipRemaining;
     }
 
     if (contacts[0].pointerInfo.frameId == m_TouchpadLastFrameId) {
-        return true;
+        return NativeTouchpadFrameResult::HandledAndSkipRemaining;
     }
     m_TouchpadLastFrameId = contacts[0].pointerInfo.frameId;
 
@@ -504,7 +526,7 @@ bool SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "GetPointerDeviceRects failed for native touchpad input: %lu",
                         GetLastError());
-            return false;
+            return NativeTouchpadFrameResult::Unhandled;
         }
 
         m_TouchpadCachedDevice = firstPointer.sourceDevice;
@@ -522,15 +544,14 @@ bool SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
     float pressure[MAX_FRAME_CHANGES] = {};
     bool seenSlots[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
     int changeCount = 0;
-    uint8_t buttonState = 0;
+    // POINTER_FLAG_FIRSTBUTTON represents the primary contact action for
+    // touch-class pointers. It is set while a finger is touching the pad and
+    // must not be forwarded as the touchpad's physical button state.
+    constexpr uint8_t buttonState = 0;
 
     for (UINT32 i = 0; i < pointerCount; i++) {
         const POINTER_TOUCH_INFO& touchInfo = contacts[i];
         const POINTER_INFO& pointerInfo = touchInfo.pointerInfo;
-
-        if (pointerInfo.pointerFlags & POINTER_FLAG_FIRSTBUTTON) {
-            buttonState |= LI_TOUCHPAD_BUTTON_PRIMARY;
-        }
 
         int slot = -1;
         for (int candidate = 0; candidate < MAX_NATIVE_TOUCHPAD_CONTACTS; candidate++) {
@@ -555,7 +576,7 @@ bool SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
                             "Native touchpad frame exceeded %d active contacts",
                             MAX_NATIVE_TOUCHPAD_CONTACTS);
                 cancelNativeTouchpadContacts();
-                return true;
+                return NativeTouchpadFrameResult::HandledAndSkipRemaining;
             }
         }
 
@@ -651,17 +672,25 @@ bool SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
                 deviceHeightMm,
                 buttonState);
 
-    m_NativeTouchpadButtonState = buttonState;
+    bool hasActiveWindowContact = false;
+    for (const auto& contact : m_NativeTouchpadContacts) {
+        hasActiveWindowContact = hasActiveWindowContact || contact.active;
+    }
+    m_NativeTouchpadOwner = hasActiveWindowContact ?
+                NativeTouchpadOwner::Window :
+                NativeTouchpadOwner::None;
     if (result != 0 && result != LI_ERR_UNSUPPORTED) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Failed to queue native touchpad frame: %d",
                     result);
     }
 
-    return result != LI_ERR_UNSUPPORTED;
+    return result == LI_ERR_UNSUPPORTED ?
+                NativeTouchpadFrameResult::Unhandled :
+                NativeTouchpadFrameResult::HandledAndSkipRemaining;
 #else
     Q_UNUSED(pointerId);
-    return false;
+    return NativeTouchpadFrameResult::Unhandled;
 #endif
 }
 
@@ -715,11 +744,13 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
     }
 
     if (isNativeTouchpadProtocolSupported()) {
-        const bool handled = handleNativeTouchpadProtocolFrame(pointerId);
-        if (handled && pSkipPointerFrameMessages != nullptr) {
+        const NativeTouchpadFrameResult result =
+                handleNativeTouchpadProtocolFrame(pointerId);
+        if (result == NativeTouchpadFrameResult::HandledAndSkipRemaining &&
+                pSkipPointerFrameMessages != nullptr) {
             pSkipPointerFrameMessages(pointerId);
         }
-        return handled;
+        return result != NativeTouchpadFrameResult::Unhandled;
     }
 
     UINT32 pointerCount = 0;
@@ -959,6 +990,35 @@ bool SdlInputHandler::isTouchpadCtrlFallbackActive() const
 #endif
 }
 
+void SdlInputHandler::setTouchpadGlobalNativeForwardingEnabled(bool enabled)
+{
+    m_TouchpadGlobalNativeForwardingEnabled = enabled;
+    if (!enabled && m_NativeTouchpadOwner == NativeTouchpadOwner::Global) {
+        m_NativeTouchpadOwner = NativeTouchpadOwner::None;
+    }
+}
+
+void SdlInputHandler::beginTouchpadGlobalNativeForwarding()
+{
+    if (m_NativeTouchpadOwner == NativeTouchpadOwner::Global) {
+        return;
+    }
+
+    // End any two-finger window sequence before the global controller starts a
+    // 3+ finger sequence. This guarantees one producer for each pointer ID.
+    cancelNativeTouchpadContacts();
+    m_NativeTouchpadOwner = NativeTouchpadOwner::Global;
+}
+
+void SdlInputHandler::endTouchpadGlobalNativeForwarding()
+{
+    if (m_NativeTouchpadOwner != NativeTouchpadOwner::Global) {
+        return;
+    }
+
+    m_NativeTouchpadOwner = NativeTouchpadOwner::None;
+}
+
 void SdlInputHandler::cancelNativeTouchpadContacts()
 {
     uint8_t nativeEventTypes[MAX_NATIVE_TOUCHPAD_CONTACTS] = {};
@@ -982,7 +1042,7 @@ void SdlInputHandler::cancelNativeTouchpadContacts()
         nativeContactCount++;
     }
 
-    if (nativeContactCount != 0 || m_NativeTouchpadButtonState != 0) {
+    if (nativeContactCount != 0) {
         const uint32_t hostFeatures = LiGetHostFeatureFlags();
         const uint16_t deviceWidthMm =
                 himetricToMillimeters(m_TouchpadCachedDeviceWidth);
@@ -1023,7 +1083,9 @@ void SdlInputHandler::cancelNativeTouchpadContacts()
     }
 
     SDL_zero(m_NativeTouchpadContacts);
-    m_NativeTouchpadButtonState = 0;
+    if (m_NativeTouchpadOwner == NativeTouchpadOwner::Window) {
+        m_NativeTouchpadOwner = NativeTouchpadOwner::None;
+    }
 
     bool hadContact = false;
     for (int slot = 0; slot < MAX_FINGERS; slot++) {
