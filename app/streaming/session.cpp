@@ -1180,6 +1180,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
     m_StreamConfig.height = m_Preferences->height;
     m_StreamConfig.enableNativeCursor = m_Preferences->absoluteMouseMode;
     m_StreamConfig.enableClipboardSync = m_Preferences->enableClipboardSync;
+    m_StreamConfig.disableAdaptiveInputThrottling = m_Preferences->disableAdaptiveInputThrottling;
 
     int x, y, width, height;
     getWindowDimensions(x, y, width, height);

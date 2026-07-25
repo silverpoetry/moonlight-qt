@@ -135,6 +135,7 @@ public:
     Q_PROPERTY(bool absoluteMouseMode MEMBER absoluteMouseMode NOTIFY absoluteMouseModeChanged)
     Q_PROPERTY(bool absoluteTouchMode MEMBER absoluteTouchMode NOTIFY absoluteTouchModeChanged)
     Q_PROPERTY(bool enableTouchpadGestures MEMBER enableTouchpadGestures NOTIFY enableTouchpadGesturesChanged)
+    Q_PROPERTY(bool disableAdaptiveInputThrottling MEMBER disableAdaptiveInputThrottling NOTIFY disableAdaptiveInputThrottlingChanged)
     Q_PROPERTY(bool enableClipboardSync MEMBER enableClipboardSync NOTIFY enableClipboardSyncChanged)
     Q_PROPERTY(bool framePacing MEMBER framePacing NOTIFY framePacingChanged)
     Q_PROPERTY(bool connectionWarnings MEMBER connectionWarnings NOTIFY connectionWarningsChanged)
@@ -186,6 +187,7 @@ public:
     bool absoluteMouseMode;
     bool absoluteTouchMode;
     bool enableTouchpadGestures;
+    bool disableAdaptiveInputThrottling;
     bool enableClipboardSync;
     bool framePacing;
     bool connectionWarnings;
@@ -229,6 +231,7 @@ signals:
     void absoluteMouseModeChanged();
     void absoluteTouchModeChanged();
     void enableTouchpadGesturesChanged();
+    void disableAdaptiveInputThrottlingChanged();
     void enableClipboardSyncChanged();
     void audioConfigChanged();
     void videoCodecConfigChanged();

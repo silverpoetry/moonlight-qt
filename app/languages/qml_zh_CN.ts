@@ -1155,6 +1155,16 @@
         <translation>启用后，Moonlight 会捕获 Windows 精确触控板手势，并将支持的双指缩放和三指手势转发到主机。</translation>
     </message>
     <message>
+        <location filename="../gui/SettingsView.qml" line="1483"/>
+        <source>Disable adaptive input throttling</source>
+        <translation>关闭自适应输入节流</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1493"/>
+        <source>Prevents ENet from intentionally dropping real-time input events when network latency varies. Packets remain non-retransmitted, but upstream traffic may increase slightly.</source>
+        <translation>防止 ENet 在网络延迟波动时主动丢弃实时输入事件。数据包仍不会重传，但上行流量可能略微增加。</translation>
+    </message>
+    <message>
         <location filename="../gui/SettingsView.qml" line="1454"/>
         <source>Sync clipboard text with the host</source>
         <translation>与主机同步剪贴板文本</translation>

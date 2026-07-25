@@ -1477,6 +1477,23 @@ Flickable {
                 }
 
                 CheckBox {
+                    id: disableAdaptiveInputThrottlingCheck
+                    hoverEnabled: true
+                    width: parent.width
+                    text: qsTr("Disable adaptive input throttling")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.disableAdaptiveInputThrottling
+                    onCheckedChanged: {
+                        StreamingPreferences.disableAdaptiveInputThrottling = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 10000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Prevents ENet from intentionally dropping real-time input events when network latency varies. Packets remain non-retransmitted, but upstream traffic may increase slightly.")
+                }
+
+                CheckBox {
                     id: clipboardSyncCheck
                     hoverEnabled: true
                     width: parent.width
