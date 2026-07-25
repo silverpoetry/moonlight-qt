@@ -1166,13 +1166,13 @@
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1454"/>
-        <source>Sync clipboard text with the host</source>
-        <translation>与主机同步剪贴板文本</translation>
+        <source>Sync clipboard with the host</source>
+        <translation>与主机同步剪贴板</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1464"/>
-        <source>Synchronizes UTF-8 text clipboard contents with supported Sunshine hosts while streaming.</source>
-        <translation>串流时与支持的 Sunshine 主机同步 UTF-8 文本剪贴板内容。</translation>
+        <source>Synchronizes UTF-8 text and supported images with Sunshine while streaming.</source>
+        <translation>串流时与 Sunshine 同步 UTF-8 文本和支持的图片。</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1539"/>

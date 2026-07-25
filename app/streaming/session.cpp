@@ -30,11 +30,9 @@
 #define SDL_CODE_GAMECONTROLLER_SET_CONTROLLER_LED 104
 #define SDL_CODE_GAMECONTROLLER_SET_ADAPTIVE_TRIGGERS 105
 #define SDL_CODE_NATIVE_CURSOR_UPDATE 106
-#define SDL_CODE_CLIPBOARD_TEXT 107
+#define SDL_CODE_CLIPBOARD_CONTENT 107
 
 #define AUTO_RECONNECT_SUSPEND_GAP_MS 5000
-#define MAX_CLIPBOARD_TEXT_BYTES (1024 * 1024)
-
 #include <openssl/rand.h>
 
 #include <QtEndian>
@@ -49,6 +47,9 @@
 #include <QHash>
 #include <QMutex>
 #include <QByteArray>
+#include <QBuffer>
+#include <QClipboard>
+#include <QMimeData>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QQuickOpenGLUtils>
@@ -72,7 +73,9 @@ CONNECTION_LISTENER_CALLBACKS Session::k_ConnCallbacks = {
     Session::clSetAdaptiveTriggers,
     Session::clNativeCursor,
     Session::clClipboardText,
-    Session::clClipboardReady
+    Session::clClipboardReady,
+    Session::clClipboardContent,
+    Session::clClipboardReady2
 };
 
 Session* Session::s_ActiveSession;
@@ -393,92 +396,192 @@ void Session::clNativeCursor(PSS_NATIVE_CURSOR_UPDATE cursorUpdate)
     }
 }
 
-void Session::clClipboardText(const uint8_t* text, uint32_t length)
+struct Session::ClipboardEvent
 {
-    if (s_ActiveSession == nullptr ||
-            !s_ActiveSession->m_StreamConfig.enableClipboardSync ||
-            text == nullptr ||
-            length > MAX_CLIPBOARD_TEXT_BYTES) {
-        return;
-    }
+    quint8 mimeType;
+    quint64 originId;
+    quint64 itemId;
+    QByteArray data;
+};
 
-    QByteArray* clipboardText = new QByteArray(reinterpret_cast<const char*>(text),
-                                               static_cast<int>(length));
+namespace {
+    constexpr auto ClipboardMarkerMime = "application/x-moonlight-clipboard-v2";
 
-    SDL_Event event = {};
-    event.type = SDL_USEREVENT;
-    event.user.code = SDL_CODE_CLIPBOARD_TEXT;
-    event.user.data1 = clipboardText;
-    if (SDL_PushEvent(&event) < 0) {
-        delete clipboardText;
+    QByteArray clipboardMarker(quint64 originId, quint64 itemId)
+    {
+        QByteArray marker(16, Qt::Uninitialized);
+        qToLittleEndian(originId, marker.data());
+        qToLittleEndian(itemId, marker.data() + 8);
+        return marker;
     }
 }
 
+void Session::clClipboardText(const uint8_t* text, uint32_t length)
+{
+    SS_CLIPBOARD_CONTENT content = {};
+    content.mimeType = LI_CLIPBOARD_MIME_TEXT_UTF8;
+    content.length = length;
+    content.data = text;
+    clClipboardContent(&content);
+}
+
 void Session::clClipboardReady()
+{
+    if (s_ActiveSession == nullptr ||
+            !s_ActiveSession->m_StreamConfig.enableClipboardSync ||
+            s_ActiveSession->m_ClipboardProtocolVersion.load() == LI_CLIPBOARD_VERSION_V2) {
+        return;
+    }
+
+    s_ActiveSession->m_ClipboardProtocolVersion.store(LI_CLIPBOARD_VERSION_V1);
+    s_ActiveSession->m_ClipboardHostCapabilities.store(
+                LI_CLIPBOARD_CAP_CAN_SEND |
+                LI_CLIPBOARD_CAP_CAN_RECEIVE |
+                LI_CLIPBOARD_CAP_TEXT);
+    s_ActiveSession->m_ClipboardSyncReady.store(true);
+}
+
+void Session::clClipboardContent(PSS_CLIPBOARD_CONTENT content)
+{
+    if (s_ActiveSession == nullptr ||
+            !s_ActiveSession->m_StreamConfig.enableClipboardSync ||
+            content == nullptr ||
+            content->data == nullptr ||
+            content->length > LiGetClipboardMimeSizeLimit(content->mimeType)) {
+        return;
+    }
+
+    ClipboardEvent* clipboardEvent = new ClipboardEvent();
+    clipboardEvent->mimeType = content->mimeType;
+    clipboardEvent->originId = content->originId;
+    clipboardEvent->itemId = content->itemId;
+    clipboardEvent->data = QByteArray(reinterpret_cast<const char*>(content->data),
+                                      static_cast<int>(content->length));
+
+    SDL_Event event = {};
+    event.type = SDL_USEREVENT;
+    event.user.code = SDL_CODE_CLIPBOARD_CONTENT;
+    event.user.data1 = clipboardEvent;
+    if (SDL_PushEvent(&event) < 0) {
+        delete clipboardEvent;
+    }
+}
+
+void Session::clClipboardReady2(uint8_t version, uint8_t capabilities)
 {
     if (s_ActiveSession == nullptr || !s_ActiveSession->m_StreamConfig.enableClipboardSync) {
         return;
     }
 
-    s_ActiveSession->m_ClipboardSyncReady = true;
-
-    SDL_Event event = {};
-    event.type = SDL_CLIPBOARDUPDATE;
-    SDL_PushEvent(&event);
+    s_ActiveSession->m_ClipboardProtocolVersion.store(version);
+    s_ActiveSession->m_ClipboardHostCapabilities.store(capabilities);
+    s_ActiveSession->m_ClipboardSyncReady.store(true);
 }
 
-void Session::applyRemoteClipboardText(const QByteArray& text)
+void Session::applyRemoteClipboardContent(const ClipboardEvent* clipboardEvent)
 {
-    if (!m_StreamConfig.enableClipboardSync ||
-            text.size() > MAX_CLIPBOARD_TEXT_BYTES ||
-            text == m_LastLocalClipboardText) {
+    if (!m_StreamConfig.enableClipboardSync || clipboardEvent == nullptr) {
         return;
     }
 
-    m_LastRemoteClipboardText = text;
-    m_ApplyingRemoteClipboardText = true;
-    if (SDL_SetClipboardText(QString::fromUtf8(text).toUtf8().constData()) == 0) {
-        m_LastLocalClipboardText = text;
+    QClipboard* clipboard = QGuiApplication::clipboard();
+    if (clipboard == nullptr) {
+        return;
+    }
+
+    QMimeData* mimeData = new QMimeData();
+    if (clipboardEvent->mimeType == LI_CLIPBOARD_MIME_TEXT_UTF8) {
+        if (!LiIsValidUtf8ClipboardText(
+                    reinterpret_cast<const uint8_t*>(clipboardEvent->data.constData()),
+                    static_cast<size_t>(clipboardEvent->data.size()))) {
+            delete mimeData;
+            return;
+        }
+        mimeData->setText(QString::fromUtf8(clipboardEvent->data));
+    }
+    else if (clipboardEvent->mimeType == LI_CLIPBOARD_MIME_PNG) {
+        QImage image;
+        if (!image.loadFromData(clipboardEvent->data, "PNG") ||
+                static_cast<quint64>(image.width()) * image.height() > LI_CLIPBOARD_MAX_IMAGE_PIXELS) {
+            delete mimeData;
+            return;
+        }
+        mimeData->setImageData(image);
     }
     else {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Failed to set local clipboard text: %s",
-                    SDL_GetError());
+        delete mimeData;
+        return;
     }
-    m_ApplyingRemoteClipboardText = false;
+
+    mimeData->setData(ClipboardMarkerMime,
+                      clipboardMarker(clipboardEvent->originId,
+                                      clipboardEvent->itemId));
+    clipboard->setMimeData(mimeData, QClipboard::Clipboard);
 }
 
-void Session::sendCurrentClipboardText()
+void Session::sendCurrentClipboardContent()
 {
     if (!m_StreamConfig.enableClipboardSync ||
-            !m_ClipboardSyncReady ||
-            m_ApplyingRemoteClipboardText ||
-            !SDL_HasClipboardText()) {
+            !m_ClipboardSyncReady.load()) {
         return;
     }
 
-    char* text = SDL_GetClipboardText();
-    if (text == nullptr) {
+    QClipboard* clipboard = QGuiApplication::clipboard();
+    const QMimeData* mimeData = clipboard == nullptr ?
+                nullptr :
+                clipboard->mimeData(QClipboard::Clipboard);
+    if (mimeData == nullptr || mimeData->hasFormat(ClipboardMarkerMime)) {
         return;
     }
 
-    QByteArray clipboardText(text);
-    SDL_free(text);
+    const auto hostCapabilities = m_ClipboardHostCapabilities.load();
+    const auto protocolVersion = m_ClipboardProtocolVersion.load();
+    if (protocolVersion == LI_CLIPBOARD_VERSION_V2 &&
+            (hostCapabilities & LI_CLIPBOARD_CAP_CAN_RECEIVE) != 0 &&
+            (hostCapabilities & LI_CLIPBOARD_CAP_PNG) != 0 &&
+            mimeData->hasImage()) {
+        QImage image = qvariant_cast<QImage>(mimeData->imageData());
+        if (!image.isNull() &&
+                static_cast<quint64>(image.width()) * image.height() <= LI_CLIPBOARD_MAX_IMAGE_PIXELS) {
+            QByteArray png;
+            QBuffer buffer(&png);
+            if (buffer.open(QIODevice::WriteOnly) &&
+                    image.save(&buffer, "PNG") &&
+                    png.size() <= static_cast<int>(LI_CLIPBOARD_MAX_PNG_INLINE_BYTES)) {
+                if (LiSendClipboardContent(
+                            LI_CLIPBOARD_MIME_PNG,
+                            reinterpret_cast<const uint8_t*>(png.constData()),
+                            static_cast<uint32_t>(png.size())) != 0) {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                                "Failed to announce clipboard PNG");
+                }
+                return;
+            }
+        }
+    }
 
-    if (clipboardText.size() > MAX_CLIPBOARD_TEXT_BYTES ||
-            clipboardText == m_LastLocalClipboardText ||
-            clipboardText == m_LastRemoteClipboardText) {
-        m_LastLocalClipboardText = clipboardText;
+    if ((hostCapabilities & LI_CLIPBOARD_CAP_CAN_RECEIVE) == 0 ||
+            (hostCapabilities & LI_CLIPBOARD_CAP_TEXT) == 0 ||
+            !mimeData->hasText()) {
         return;
     }
 
-    if (LiSendClipboardText(reinterpret_cast<const uint8_t*>(clipboardText.constData()),
-                            static_cast<uint32_t>(clipboardText.size())) == 0) {
-        m_LastLocalClipboardText = clipboardText;
+    QByteArray text = mimeData->text().toUtf8();
+    if (text.size() > static_cast<int>(LI_CLIPBOARD_MAX_TEXT_BYTES)) {
+        return;
     }
-    else {
+
+    const int result = protocolVersion == LI_CLIPBOARD_VERSION_V2 ?
+                LiSendClipboardContent(
+                    LI_CLIPBOARD_MIME_TEXT_UTF8,
+                    reinterpret_cast<const uint8_t*>(text.constData()),
+                    static_cast<uint32_t>(text.size())) :
+                LiSendClipboardText(
+                    reinterpret_cast<const uint8_t*>(text.constData()),
+                    static_cast<uint32_t>(text.size()));
+    if (result != 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Failed to send clipboard text to host");
+                    "Failed to announce clipboard text");
     }
 }
 
@@ -1054,7 +1157,8 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_AutoReconnectPending(false),
       m_SuppressTerminationErrors(false),
       m_ClipboardSyncReady(false),
-      m_ApplyingRemoteClipboardText(false),
+      m_ClipboardProtocolVersion(0),
+      m_ClipboardHostCapabilities(0),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_LastStartupTimingMs(0),
@@ -1180,7 +1284,23 @@ bool Session::initialize(QQuickWindow* qtWindow)
     m_StreamConfig.height = m_Preferences->height;
     m_StreamConfig.enableNativeCursor = m_Preferences->absoluteMouseMode;
     m_StreamConfig.enableClipboardSync = m_Preferences->enableClipboardSync;
+    m_StreamConfig.clipboardCapabilities = m_Preferences->enableClipboardSync ?
+                LI_CLIPBOARD_CAP_CAN_SEND |
+                LI_CLIPBOARD_CAP_CAN_RECEIVE |
+                LI_CLIPBOARD_CAP_TEXT |
+                LI_CLIPBOARD_CAP_PNG :
+                0;
     m_StreamConfig.disableAdaptiveInputThrottling = m_Preferences->disableAdaptiveInputThrottling;
+
+    QClipboard* clipboard = QGuiApplication::clipboard();
+    if (clipboard != nullptr) {
+        connect(clipboard, &QClipboard::changed, this,
+                [this](QClipboard::Mode mode) {
+            if (mode == QClipboard::Clipboard) {
+                sendCurrentClipboardContent();
+            }
+        });
+    }
 
     int x, y, width, height;
     getWindowDimensions(x, y, width, height);
@@ -2697,11 +2817,12 @@ void Session::exec()
                 delete nativeCursorEvent;
                 break;
             }
-            case SDL_CODE_CLIPBOARD_TEXT:
+            case SDL_CODE_CLIPBOARD_CONTENT:
             {
-                QByteArray* clipboardText = static_cast<QByteArray*>(event.user.data1);
-                applyRemoteClipboardText(*clipboardText);
-                delete clipboardText;
+                ClipboardEvent* clipboardEvent =
+                        static_cast<ClipboardEvent*>(event.user.data1);
+                applyRemoteClipboardContent(clipboardEvent);
+                delete clipboardEvent;
                 break;
             }
             default:
@@ -2710,7 +2831,9 @@ void Session::exec()
             break;
 
         case SDL_CLIPBOARDUPDATE:
-            sendCurrentClipboardText();
+            // QClipboard::changed is the authoritative notification source. It
+            // also provides the clipboard mode, avoiding duplicate sends from
+            // SDL's platform-specific clipboard event forwarding.
             break;
 
         case SDL_WINDOWEVENT:
@@ -2986,7 +3109,9 @@ void Session::exec()
 
 DispatchDeferredCleanup:
     logStartupTiming("Session.exec cleanup begin");
-    m_ClipboardSyncReady = false;
+    m_ClipboardSyncReady.store(false);
+    m_ClipboardProtocolVersion.store(0);
+    m_ClipboardHostCapabilities.store(0);
 
     // Switch back to synchronous logging mode
     StreamUtils::exitAsyncLoggingMode();

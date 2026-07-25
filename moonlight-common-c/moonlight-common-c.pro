@@ -55,12 +55,14 @@ SOURCES += \
     $$COMMON_C_DIR/nanors/deps/obl/oblas_lite.c \
     $$COMMON_C_DIR/src/AudioStream.c \
     $$COMMON_C_DIR/src/ByteBuffer.c \
+    $$COMMON_C_DIR/src/Clipboard.c \
     $$COMMON_C_DIR/src/Connection.c \
     $$COMMON_C_DIR/src/ConnectionTester.c \
     $$COMMON_C_DIR/src/ControlStream.c \
     $$COMMON_C_DIR/src/FakeCallbacks.c \
     $$COMMON_C_DIR/src/InputStream.c \
     $$COMMON_C_DIR/src/LinkedBlockingQueue.c \
+    $$COMMON_C_DIR/src/MicrophoneStream.c \
     $$COMMON_C_DIR/src/Misc.c \
     $$COMMON_C_DIR/src/Platform.c \
     $$COMMON_C_DIR/src/PlatformCrypto.c \
@@ -71,10 +73,13 @@ SOURCES += \
     $$COMMON_C_DIR/src/RtspParser.c \
     $$COMMON_C_DIR/src/SdpGenerator.c \
     $$COMMON_C_DIR/src/SimpleStun.c \
+    $$COMMON_C_DIR/src/Srtp.c \
     $$COMMON_C_DIR/src/VideoDepacketizer.c \
     $$COMMON_C_DIR/src/VideoStream.c
 HEADERS += \
-    $$COMMON_C_DIR/src/Limelight.h
+    $$COMMON_C_DIR/src/Clipboard.h \
+    $$COMMON_C_DIR/src/Limelight.h \
+    $$COMMON_C_DIR/src/Srtp.h
 INCLUDEPATH += \
     $$ENET_DIR/include \
     $$COMMON_C_DIR/src \

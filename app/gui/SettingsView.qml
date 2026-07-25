@@ -1497,7 +1497,7 @@ Flickable {
                     id: clipboardSyncCheck
                     hoverEnabled: true
                     width: parent.width
-                    text: qsTr("Sync clipboard text with the host")
+                    text: qsTr("Sync clipboard with the host")
                     font.pointSize: 12
                     checked: StreamingPreferences.enableClipboardSync
                     onCheckedChanged: {
@@ -1507,7 +1507,7 @@ Flickable {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 10000
                     ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Synchronizes UTF-8 text clipboard contents with supported Sunshine hosts while streaming.")
+                    ToolTip.text: qsTr("Synchronizes UTF-8 text and supported images with Sunshine while streaming.")
                 }
 
                 CheckBox {
