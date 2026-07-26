@@ -137,6 +137,7 @@ public:
     Q_PROPERTY(bool enableTouchpadGestures MEMBER enableTouchpadGestures NOTIFY enableTouchpadGesturesChanged)
     Q_PROPERTY(bool disableAdaptiveInputThrottling MEMBER disableAdaptiveInputThrottling NOTIFY disableAdaptiveInputThrottlingChanged)
     Q_PROPERTY(bool enableClipboardSync MEMBER enableClipboardSync NOTIFY enableClipboardSyncChanged)
+    Q_PROPERTY(bool enableClipboardImageSync MEMBER enableClipboardImageSync NOTIFY enableClipboardImageSyncChanged)
     Q_PROPERTY(bool framePacing MEMBER framePacing NOTIFY framePacingChanged)
     Q_PROPERTY(bool connectionWarnings MEMBER connectionWarnings NOTIFY connectionWarningsChanged)
     Q_PROPERTY(bool configurationWarnings MEMBER configurationWarnings NOTIFY configurationWarningsChanged)
@@ -189,6 +190,7 @@ public:
     bool enableTouchpadGestures;
     bool disableAdaptiveInputThrottling;
     bool enableClipboardSync;
+    bool enableClipboardImageSync;
     bool framePacing;
     bool connectionWarnings;
     bool configurationWarnings;
@@ -233,6 +235,7 @@ signals:
     void enableTouchpadGesturesChanged();
     void disableAdaptiveInputThrottlingChanged();
     void enableClipboardSyncChanged();
+    void enableClipboardImageSyncChanged();
     void audioConfigChanged();
     void videoCodecConfigChanged();
     void enableHdrChanged();

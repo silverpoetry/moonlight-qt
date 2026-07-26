@@ -6,6 +6,7 @@
 #include <QMutex>
 #include <QByteArray>
 #include <atomic>
+#include <memory>
 
 #include <Limelight.h>
 #include <opus_multistream.h>
@@ -14,6 +15,10 @@
 #include "video/decoder.h"
 #include "audio/renderers/renderer.h"
 #include "video/overlaymanager.h"
+
+struct ClipboardEvent;
+struct ClipboardBlobUploadEvent;
+struct ClipboardTransferState;
 
 class SupportedVideoFormatList : public QList<int>
 {
@@ -297,9 +302,10 @@ private:
 
     struct NativeCursorEvent;
     void applyNativeCursor(const NativeCursorEvent* cursorEvent);
-    struct ClipboardEvent;
     void applyRemoteClipboardContent(const ClipboardEvent* clipboardEvent);
-    void sendCurrentClipboardContent();
+    void completeClipboardBlobUpload(const ClipboardBlobUploadEvent* uploadEvent);
+    void sendCurrentClipboardContent(bool forceCurrentContent = false);
+    void deactivateClipboardSync();
 
     StreamingPreferences* m_Preferences;
     bool m_IsFullScreen;
@@ -337,6 +343,7 @@ private:
     std::atomic_bool m_ClipboardSyncReady;
     std::atomic_int m_ClipboardProtocolVersion;
     std::atomic_int m_ClipboardHostCapabilities;
+    std::shared_ptr<ClipboardTransferState> m_ClipboardTransferState;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;

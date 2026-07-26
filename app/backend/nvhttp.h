@@ -9,6 +9,7 @@
 #include <QUrl>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QNetworkRequest>
 
 class NvComputer;
 
@@ -103,6 +104,12 @@ class NvHTTP : public QObject
     Q_OBJECT
 
 public:
+    struct ClipboardBlobUploadResult {
+        QString id;
+        quint32 size;
+        QByteArray sha256;
+    };
+
     enum NvLogLevel {
         NVLL_NONE,
         NVLL_ERROR,
@@ -178,6 +185,18 @@ public:
     QImage
     getBoxArt(int appId);
 
+    ClipboardBlobUploadResult
+    uploadClipboardBlob(const QByteArray& mimeType,
+                        const QByteArray& content,
+                        quint64 originId);
+
+    QByteArray
+    downloadClipboardBlob(const QString& id,
+                          const QByteArray& expectedMimeType,
+                          quint64 requestOriginId,
+                          quint32 expectedSize,
+                          const QByteArray& expectedSha256);
+
     static
     QVector<NvDisplayMode>
     getDisplayModeList(QString serverInfo);
@@ -185,6 +204,17 @@ public:
     QUrl m_BaseUrlHttp;
     QUrl m_BaseUrlHttps;
 private:
+    QNetworkRequest
+    createRequest(const QUrl& url);
+
+    QNetworkReply*
+    executeRequest(QNetworkRequest request,
+                   const QByteArray* uploadData,
+                   QString command,
+                   int timeoutMs,
+                   NvLogLevel logLevel,
+                   qint64 maximumResponseBytes = 0);
+
     void
     handleSslErrors(QNetworkReply* reply, const QList<QSslError>& errors);
 

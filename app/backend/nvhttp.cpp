@@ -2,6 +2,9 @@
 #include <Limelight.h>
 
 #include <QDebug>
+#include <QCryptographicHash>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QUuid>
 #include <QtNetwork/QNetworkReply>
 #include <QEventLoop>
@@ -17,6 +20,11 @@
 #define LAUNCH_TIMEOUT_MS 120000
 #define RESUME_TIMEOUT_MS 30000
 #define QUIT_TIMEOUT_MS 30000
+#define CLIPBOARD_BLOB_TIMEOUT_MS 30000
+
+namespace {
+    constexpr int ClipboardMaxBlobBytes = 32 * 1024 * 1024;
+}
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 #define XML_NAME_EQUALS(x, y) ((x) == (y))
@@ -394,6 +402,132 @@ NvHTTP::getBoxArt(int appId)
     return image;
 }
 
+NvHTTP::ClipboardBlobUploadResult
+NvHTTP::uploadClipboardBlob(const QByteArray& mimeType,
+                            const QByteArray& content,
+                            quint64 originId)
+{
+    if ((mimeType != "image/png" && mimeType != "text/plain") ||
+            content.isEmpty() ||
+            content.size() > ClipboardMaxBlobBytes ||
+            originId == 0) {
+        throw std::invalid_argument("Invalid clipboard blob upload");
+    }
+
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/blobs");
+    url.setQuery(QString());
+
+    QNetworkRequest request = createRequest(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, mimeType);
+    request.setRawHeader("X-Clipboard-Mime", mimeType);
+    request.setRawHeader("X-Clipboard-Origin",
+                         QString::number(static_cast<qulonglong>(originId)).toLatin1());
+    request.setRawHeader("X-Clipboard-Idempotency-Key",
+                         QUuid::createUuid().toString(QUuid::WithoutBraces).toLatin1());
+
+    QNetworkReply* reply = executeRequest(request,
+                                          &content,
+                                          "clipboard blob upload",
+                                          CLIPBOARD_BLOB_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR,
+                                          64 * 1024);
+    const QByteArray response = reply->readAll();
+    delete reply;
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(response, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        throw std::runtime_error("Malformed clipboard blob upload response");
+    }
+
+    const QJsonObject object = document.object();
+    const QString id = object.value("id").toString().trimmed().toLower();
+    const QUuid uuid(id);
+    const auto sizeValue = object.value("size");
+    const double sizeNumber = sizeValue.isDouble() ?
+                sizeValue.toDouble(-1) :
+                -1;
+    const qint64 size = sizeNumber >= 0 ?
+                static_cast<qint64>(sizeNumber) :
+                -1;
+    const QByteArray digestHex = object.value("sha256").toString().toLatin1().toLower();
+    const QByteArray digest = QByteArray::fromHex(digestHex);
+    const QByteArray expectedDigest =
+            QCryptographicHash::hash(content, QCryptographicHash::Sha256);
+
+    if (uuid.isNull() ||
+            uuid.toString(QUuid::WithoutBraces).compare(id, Qt::CaseInsensitive) != 0 ||
+            static_cast<double>(size) != sizeNumber ||
+            size != content.size() ||
+            digestHex.size() != 64 ||
+            digest.toHex() != digestHex ||
+            digest != expectedDigest) {
+        throw std::runtime_error("Invalid clipboard blob upload response");
+    }
+
+    return {
+        id,
+        static_cast<quint32>(size),
+        digest,
+    };
+}
+
+QByteArray
+NvHTTP::downloadClipboardBlob(const QString& id,
+                              const QByteArray& expectedMimeType,
+                              quint64 requestOriginId,
+                              quint32 expectedSize,
+                              const QByteArray& expectedSha256)
+{
+    const QString normalizedId = id.trimmed().toLower();
+    const QUuid uuid(normalizedId);
+    if (uuid.isNull() ||
+            uuid.toString(QUuid::WithoutBraces).compare(normalizedId, Qt::CaseInsensitive) != 0 ||
+            (expectedMimeType != "image/png" && expectedMimeType != "text/plain") ||
+            requestOriginId == 0 ||
+            expectedSize == 0 ||
+            expectedSize > static_cast<quint32>(ClipboardMaxBlobBytes) ||
+            expectedSha256.size() != 32) {
+        throw std::invalid_argument("Invalid clipboard blob download");
+    }
+
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/blobs/" + normalizedId);
+    url.setQuery(QString());
+
+    QNetworkRequest request = createRequest(url);
+    request.setRawHeader("X-Clipboard-Origin",
+                         QString::number(static_cast<qulonglong>(requestOriginId)).toLatin1());
+
+    QNetworkReply* reply = executeRequest(request,
+                                          nullptr,
+                                          "clipboard blob download",
+                                          CLIPBOARD_BLOB_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR,
+                                          expectedSize);
+
+    const QByteArray responseMimeType =
+            reply->rawHeader("Content-Type").split(';').value(0).trimmed().toLower();
+    const QByteArray responseDigestHex =
+            reply->rawHeader("X-Clipboard-SHA256").trimmed().toLower();
+    const QVariant contentLength = reply->header(QNetworkRequest::ContentLengthHeader);
+    const QByteArray content = reply->readAll();
+    delete reply;
+
+    if (responseMimeType != expectedMimeType ||
+            responseDigestHex.size() != 64 ||
+            QByteArray::fromHex(responseDigestHex) != expectedSha256 ||
+            (contentLength.isValid() &&
+             contentLength.toLongLong() != static_cast<qint64>(expectedSize)) ||
+            content.size() != static_cast<int>(expectedSize) ||
+            QCryptographicHash::hash(content, QCryptographicHash::Sha256) != expectedSha256) {
+        throw std::runtime_error("Clipboard blob integrity check failed");
+    }
+
+    return content;
+}
+
 QByteArray
 NvHTTP::getXmlStringFromHex(QString xml,
                             QString tagName)
@@ -445,6 +579,108 @@ void NvHTTP::handleSslErrors(QNetworkReply* reply, const QList<QSslError>& error
     }
 }
 
+QNetworkRequest NvHTTP::createRequest(const QUrl& url)
+{
+    QNetworkRequest request(url);
+
+    // Authenticate with the same client identity used for all paired host
+    // requests and pin the server certificate in handleSslErrors().
+    request.setSslConfiguration(IdentityManager::get()->getSslConfig());
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    // Disable HTTP/2 (GFE 3.22 doesn't like it) and Qt 6 enables it by default.
+    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+#endif
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 3, 0)
+    // Sunshine and GFE expect these management requests to be short-lived.
+    request.setAttribute(QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute, 0);
+#endif
+
+    return request;
+}
+
+QNetworkReply*
+NvHTTP::executeRequest(QNetworkRequest request,
+                       const QByteArray* uploadData,
+                       QString command,
+                       int timeoutMs,
+                       NvLogLevel logLevel,
+                       qint64 maximumResponseBytes)
+{
+    const QUrl url = request.url();
+    auto sslErrorsConnection =
+            connect(m_Nam, &QNetworkAccessManager::sslErrors,
+                    this, &NvHTTP::handleSslErrors);
+    QNetworkReply* reply = uploadData == nullptr ?
+                m_Nam->get(request) :
+                m_Nam->post(request, *uploadData);
+    if (maximumResponseBytes > 0) {
+        reply->setProperty("moonlightResponseTooLarge", false);
+        connect(reply, &QNetworkReply::readyRead, reply,
+                [reply, maximumResponseBytes]() {
+            if (reply->bytesAvailable() > maximumResponseBytes) {
+                reply->setProperty("moonlightResponseTooLarge", true);
+                reply->abort();
+            }
+        });
+    }
+
+    QEventLoop loop;
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
+            &loop, &QEventLoop::quit);
+    if (timeoutMs) {
+        QTimer::singleShot(timeoutMs, &loop, &QEventLoop::quit);
+    }
+    if (logLevel >= NvLogLevel::NVLL_VERBOSE) {
+        qInfo() << "Executing request:" << url.toString();
+    }
+    loop.exec(QEventLoop::ExcludeUserInputEvents);
+
+    if (!reply->isFinished()) {
+        if (logLevel >= NvLogLevel::NVLL_ERROR) {
+            qWarning() << "Aborting timed out request for" << url.toString();
+        }
+        reply->abort();
+    }
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 3, 0)
+    m_Nam->clearAccessCache();
+#endif
+    disconnect(sslErrorsConnection);
+
+    if (reply->property("moonlightResponseTooLarge").toBool()) {
+        delete reply;
+        throw std::runtime_error("HTTP response exceeded the size limit");
+    }
+
+    if (reply->error() != QNetworkReply::NoError) {
+        if (logLevel >= NvLogLevel::NVLL_ERROR) {
+            qWarning() << command << "request failed with error:" << reply->error();
+        }
+
+        if (reply->error() == QNetworkReply::SslHandshakeFailedError) {
+            GfeHttpResponseException exception(401, "Server certificate mismatch");
+            delete reply;
+            throw exception;
+        }
+        else if (reply->error() == QNetworkReply::OperationCanceledError) {
+            QtNetworkReplyException exception(QNetworkReply::TimeoutError,
+                                              "Request timed out");
+            delete reply;
+            throw exception;
+        }
+        else {
+            QtNetworkReplyException exception(reply->error(), reply->errorString());
+            delete reply;
+            throw exception;
+        }
+    }
+
+    return reply;
+}
+
 QString
 NvHTTP::openConnectionToString(QUrl baseUrl,
                                QString command,
@@ -488,78 +724,6 @@ NvHTTP::openConnection(QUrl baseUrl,
                  "&uuid=" + QUuid::createUuid().toRfc4122().toHex() +
                  ((arguments != nullptr) ? ("&" + arguments) : ""));
 
-    QNetworkRequest request(url);
-
-    // Add our client certificate
-    request.setSslConfiguration(IdentityManager::get()->getSslConfig());
-
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    // Disable HTTP/2 (GFE 3.22 doesn't like it) and Qt 6 enables it by default
-    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-#endif
-
-#if QT_VERSION >= QT_VERSION_CHECK(6, 3, 0)
-    // Use fine-grained idle timeouts to avoid calling QNetworkAccessManager::clearAccessCache(),
-    // which tears down the NAM's global thread each time. We must not keep persistent connections
-    // or GFE will puke.
-    request.setAttribute(QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute, 0);
-#endif
-
-    auto sslErrorsConnection = connect(m_Nam, &QNetworkAccessManager::sslErrors, this, &NvHTTP::handleSslErrors);
-    QNetworkReply* reply = m_Nam->get(request);
-
-    // Run the request with a timeout if requested
-    QEventLoop loop;
-    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, &loop, &QEventLoop::quit);
-    if (timeoutMs) {
-        QTimer::singleShot(timeoutMs, &loop, &QEventLoop::quit);
-    }
-    if (logLevel >= NvLogLevel::NVLL_VERBOSE) {
-        qInfo() << "Executing request:" << url.toString();
-    }
-    loop.exec(QEventLoop::ExcludeUserInputEvents);
-
-    // Abort the request if it timed out
-    if (!reply->isFinished())
-    {
-        if (logLevel >= NvLogLevel::NVLL_ERROR) {
-            qWarning() << "Aborting timed out request for" << url.toString();
-        }
-        reply->abort();
-    }
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 3, 0)
-    // If we couldn't use fine-grained connection idle timeouts, kill them all now
-    m_Nam->clearAccessCache();
-#endif
-    disconnect(sslErrorsConnection);
-
-    // Handle error
-    if (reply->error() != QNetworkReply::NoError)
-    {
-        if (logLevel >= NvLogLevel::NVLL_ERROR) {
-            qWarning() << command << "request failed with error:" << reply->error();
-        }
-
-        if (reply->error() == QNetworkReply::SslHandshakeFailedError) {
-            // This will trigger falling back to HTTP for the serverinfo query
-            // then pairing again to get the updated certificate.
-            GfeHttpResponseException exception(401, "Server certificate mismatch");
-            delete reply;
-            throw exception;
-        }
-        else if (reply->error() == QNetworkReply::OperationCanceledError) {
-            QtNetworkReplyException exception(QNetworkReply::TimeoutError, "Request timed out");
-            delete reply;
-            throw exception;
-        }
-        else {
-            QtNetworkReplyException exception(reply->error(), reply->errorString());
-            delete reply;
-            throw exception;
-        }
-    }
-
-    return reply;
+    QNetworkRequest request = createRequest(url);
+    return executeRequest(request, nullptr, command, timeoutMs, logLevel);
 }
