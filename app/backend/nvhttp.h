@@ -110,6 +110,14 @@ public:
         QByteArray sha256;
     };
 
+    struct ClipboardFileRequest {
+        bool found;
+        QString id;
+        quint32 fileIndex;
+        quint64 offset;
+        quint32 length;
+    };
+
     enum NvLogLevel {
         NVLL_NONE,
         NVLL_ERROR,
@@ -198,17 +206,22 @@ public:
                           const QByteArray& expectedSha256);
 
     ClipboardBlobUploadResult
-    beginClipboardFileUpload(const QByteArray& manifest, quint64 originId);
+    registerClipboardFileSource(const QByteArray& manifest, quint64 originId);
 
-    void
-    uploadClipboardFileChunk(const QString& id,
-                             quint32 fileIndex,
-                             quint64 offset,
-                             const QByteArray& content,
+    ClipboardFileRequest
+    pollClipboardFileRequest(const QString& id,
                              quint64 originId);
 
     void
-    completeClipboardFileUpload(const QString& id, quint64 originId);
+    fulfillClipboardFileRequest(const QString& id,
+                                const QString& requestId,
+                                const QByteArray& content,
+                                quint64 originId);
+
+    void
+    rejectClipboardFileRequest(const QString& id,
+                               const QString& requestId,
+                               quint64 originId);
 
     QByteArray
     downloadClipboardFileManifest(const QString& id,

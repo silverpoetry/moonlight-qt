@@ -16,6 +16,8 @@
 #include <QNetworkProxy>
 #include <QUrlQuery>
 
+#include <limits>
+
 #define FAST_FAIL_TIMEOUT_MS 2000
 #define REQUEST_TIMEOUT_MS 5000
 #define LAUNCH_TIMEOUT_MS 120000
@@ -26,7 +28,8 @@
 
 namespace {
     constexpr int ClipboardMaxBlobBytes = 32 * 1024 * 1024;
-    constexpr int ClipboardMaxFileChunkBytes = 4 * 1024 * 1024;
+    constexpr int ClipboardMaxFileChunkBytes =
+            LI_CLIPBOARD_MAX_FILE_CHUNK_BYTES;
 
     bool isCanonicalUuid(const QString& id)
     {
@@ -541,7 +544,7 @@ NvHTTP::downloadClipboardBlob(const QString& id,
 }
 
 NvHTTP::ClipboardBlobUploadResult
-NvHTTP::beginClipboardFileUpload(const QByteArray& manifest, quint64 originId)
+NvHTTP::registerClipboardFileSource(const QByteArray& manifest, quint64 originId)
 {
     if (manifest.isEmpty() ||
             manifest.size() > static_cast<int>(LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES) ||
@@ -566,7 +569,7 @@ NvHTTP::beginClipboardFileUpload(const QByteArray& manifest, quint64 originId)
 
     QNetworkReply* reply = executeRequest(request,
                                           &manifest,
-                                          "clipboard file manifest upload",
+                                          "clipboard file source registration",
                                           CLIPBOARD_FILE_TIMEOUT_MS,
                                           NvLogLevel::NVLL_ERROR,
                                           64 * 1024);
@@ -576,7 +579,8 @@ NvHTTP::beginClipboardFileUpload(const QByteArray& manifest, quint64 originId)
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(response, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        throw std::runtime_error("Malformed clipboard file upload response");
+        throw std::runtime_error(
+                    "Malformed clipboard file source response");
     }
 
     const QJsonObject object = document.object();
@@ -595,7 +599,8 @@ NvHTTP::beginClipboardFileUpload(const QByteArray& manifest, quint64 originId)
             digestHex.size() != 64 ||
             digest.toHex() != digestHex ||
             digest != expectedDigest) {
-        throw std::runtime_error("Invalid clipboard file upload response");
+        throw std::runtime_error(
+                    "Invalid clipboard file source response");
     }
 
     return {
@@ -605,40 +610,107 @@ NvHTTP::beginClipboardFileUpload(const QByteArray& manifest, quint64 originId)
     };
 }
 
-void
-NvHTTP::uploadClipboardFileChunk(const QString& id,
-                                 quint32 fileIndex,
-                                 quint64 offset,
-                                 const QByteArray& content,
-                                 quint64 originId)
+NvHTTP::ClipboardFileRequest
+NvHTTP::pollClipboardFileRequest(const QString& id, quint64 originId)
 {
     const QString normalizedId = id.trimmed().toLower();
-    if (!isCanonicalUuid(normalizedId) ||
-            content.isEmpty() ||
-            content.size() > ClipboardMaxFileChunkBytes ||
-            originId == 0) {
-        throw std::invalid_argument("Invalid clipboard file chunk");
+    if (!isCanonicalUuid(normalizedId) || originId == 0) {
+        throw std::invalid_argument("Invalid clipboard file request poll");
     }
 
     QUrl url(m_BaseUrlHttps);
     url.setPath("/api/v2/clipboard/files/" + normalizedId +
-                "/" + QString::number(fileIndex));
-    url.setQuery(QString());
+                "/requests");
+    QUrlQuery query;
+    query.addQueryItem("wait", QString::number(25));
+    url.setQuery(query);
 
+    QNetworkRequest request = createRequest(url);
+    request.setRawHeader("X-Clipboard-Origin",
+                         QString::number(static_cast<qulonglong>(originId)).toLatin1());
+
+    QNetworkReply* reply = executeRequest(request,
+                                          nullptr,
+                                          "clipboard file request poll",
+                                          30 * 1000,
+                                          NvLogLevel::NVLL_ERROR,
+                                          64 * 1024);
+    const QByteArray response = reply->readAll();
+    delete reply;
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(response, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        throw std::runtime_error("Malformed clipboard file request");
+    }
+    const QJsonValue requestValue = document.object().value("request");
+    if (requestValue.isNull()) {
+        return {false, {}, 0, 0, 0};
+    }
+    if (!requestValue.isObject()) {
+        throw std::runtime_error("Invalid clipboard file request");
+    }
+
+    const QJsonObject object = requestValue.toObject();
+    const QString requestId = object.value("id").toString().trimmed().toLower();
+    const double fileIndexNumber = object.value("file_index").toDouble(-1);
+    const double offsetNumber = object.value("offset").toDouble(-1);
+    const double lengthNumber = object.value("length").toDouble(-1);
+    if (!isCanonicalUuid(requestId) ||
+            fileIndexNumber < 0 ||
+            fileIndexNumber > std::numeric_limits<quint32>::max() ||
+            static_cast<double>(static_cast<quint32>(fileIndexNumber)) !=
+                fileIndexNumber ||
+            offsetNumber < 0 ||
+            offsetNumber > static_cast<double>(
+                std::numeric_limits<quint64>::max()) ||
+            static_cast<double>(static_cast<quint64>(offsetNumber)) !=
+                offsetNumber ||
+            lengthNumber <= 0 ||
+            lengthNumber > ClipboardMaxFileChunkBytes ||
+            static_cast<double>(static_cast<quint32>(lengthNumber)) !=
+                lengthNumber) {
+        throw std::runtime_error("Invalid clipboard file request fields");
+    }
+    return {
+        true,
+        requestId,
+        static_cast<quint32>(fileIndexNumber),
+        static_cast<quint64>(offsetNumber),
+        static_cast<quint32>(lengthNumber),
+    };
+}
+
+void
+NvHTTP::fulfillClipboardFileRequest(const QString& id,
+                                    const QString& requestId,
+                                    const QByteArray& content,
+                                    quint64 originId)
+{
+    const QString normalizedId = id.trimmed().toLower();
+    const QString normalizedRequestId = requestId.trimmed().toLower();
+    if (!isCanonicalUuid(normalizedId) ||
+            !isCanonicalUuid(normalizedRequestId) ||
+            content.isEmpty() ||
+            content.size() > ClipboardMaxFileChunkBytes ||
+            originId == 0) {
+        throw std::invalid_argument("Invalid clipboard file response");
+    }
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/files/" + normalizedId +
+                "/requests/" + normalizedRequestId);
+    url.setQuery(QString());
     QNetworkRequest request = createRequest(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader,
                       QByteArrayLiteral("application/octet-stream"));
     request.setRawHeader("X-Clipboard-Origin",
                          QString::number(static_cast<qulonglong>(originId)).toLatin1());
-    request.setRawHeader("X-Clipboard-Offset",
-                         QString::number(static_cast<qulonglong>(offset)).toLatin1());
     request.setRawHeader(
                 "X-Clipboard-SHA256",
                 QCryptographicHash::hash(content, QCryptographicHash::Sha256).toHex());
-
     QNetworkReply* reply = executeRequest(request,
                                           &content,
-                                          "clipboard file chunk upload",
+                                          "clipboard file response",
                                           CLIPBOARD_FILE_TIMEOUT_MS,
                                           NvLogLevel::NVLL_ERROR,
                                           64 * 1024);
@@ -646,26 +718,39 @@ NvHTTP::uploadClipboardFileChunk(const QString& id,
 }
 
 void
-NvHTTP::completeClipboardFileUpload(const QString& id, quint64 originId)
+NvHTTP::rejectClipboardFileRequest(const QString& id,
+                                   const QString& requestId,
+                                   quint64 originId)
 {
     const QString normalizedId = id.trimmed().toLower();
-    if (!isCanonicalUuid(normalizedId) || originId == 0) {
-        throw std::invalid_argument("Invalid clipboard file completion");
+    const QString normalizedRequestId = requestId.trimmed().toLower();
+    if (!isCanonicalUuid(normalizedId) ||
+            !isCanonicalUuid(normalizedRequestId) ||
+            originId == 0) {
+        throw std::invalid_argument(
+                    "Invalid clipboard file rejection");
     }
 
     QUrl url(m_BaseUrlHttps);
-    url.setPath("/api/v2/clipboard/files/" + normalizedId + "/complete");
+    url.setPath("/api/v2/clipboard/files/" + normalizedId +
+                "/requests/" + normalizedRequestId);
     url.setQuery(QString());
     QNetworkRequest request = createRequest(url);
     request.setRawHeader("X-Clipboard-Origin",
-                         QString::number(static_cast<qulonglong>(originId)).toLatin1());
-    const QByteArray emptyBody;
-    QNetworkReply* reply = executeRequest(request,
-                                          &emptyBody,
-                                          "clipboard file completion",
-                                          CLIPBOARD_FILE_TIMEOUT_MS,
-                                          NvLogLevel::NVLL_ERROR,
-                                          64 * 1024);
+                         QString::number(
+                             static_cast<qulonglong>(originId))
+                             .toLatin1());
+    request.setRawHeader("X-Clipboard-Error",
+                         QByteArrayLiteral("source_unavailable"));
+
+    const QByteArray emptyContent;
+    QNetworkReply* reply = executeRequest(
+                request,
+                &emptyContent,
+                "clipboard file rejection",
+                CLIPBOARD_FILE_TIMEOUT_MS,
+                NvLogLevel::NVLL_ERROR,
+                64 * 1024);
     delete reply;
 }
 

@@ -254,6 +254,11 @@ HEADERS += \
     streaming/video/overlaymanager.h \
     backend/systemproperties.h
 
+win32 {
+    SOURCES += streaming/clipboardvirtualfiles_win.cpp
+    HEADERS += streaming/clipboardvirtualfiles_win.h
+}
+
 # Platform-specific renderers and decoders
 ffmpeg {
     message(FFmpeg decoder selected)
