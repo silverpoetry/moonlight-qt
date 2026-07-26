@@ -20,6 +20,7 @@
 
 #ifdef Q_OS_WIN32
 #include "clipboardvirtualfiles_win.h"
+#include <Windows.h>
 
 // Scaling the icon down on Win32 looks dreadful, so render at lower res
 #define ICON_SIZE 32
@@ -58,6 +59,7 @@
 #include <QMimeData>
 #include <QReadLocker>
 #include <QCryptographicHash>
+#include <QSettings>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -446,12 +448,15 @@ struct ClipboardBlobUploadEvent
     QString id;
     quint32 size;
     QByteArray sha256;
+    QByteArray contentKey;
     quint64 generation;
     std::shared_ptr<ClipboardTransferState> transferState;
 };
 
 namespace {
     constexpr auto ClipboardMarkerMime = "application/x-moonlight-clipboard-v2";
+    constexpr auto ClipboardLastHandledContentKey =
+            "clipboard/lastHandledContent";
     constexpr int ClipboardMaxBlobBytes = 32 * 1024 * 1024;
 
     struct ClipboardFileEntry
@@ -469,6 +474,58 @@ namespace {
         qToLittleEndian(originId, marker.data());
         qToLittleEndian(itemId, marker.data() + 8);
         return marker;
+    }
+
+    QByteArray clipboardContentKey(quint8 mimeType,
+                                   const QByteArray& content)
+    {
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        const char type = static_cast<char>(mimeType);
+        hash.addData(&type, 1);
+        hash.addData(content);
+#ifdef Q_OS_WIN32
+        const quint32 sequence =
+                qToLittleEndian<quint32>(GetClipboardSequenceNumber());
+        hash.addData(reinterpret_cast<const char*>(&sequence),
+                     sizeof(sequence));
+#endif
+        return hash.result();
+    }
+
+    void rememberClipboardContent(const QByteArray& contentKey)
+    {
+        if (!contentKey.isEmpty()) {
+            QSettings().setValue(ClipboardLastHandledContentKey, contentKey);
+        }
+    }
+
+    bool shouldPublishClipboardContent(const QByteArray& contentKey,
+                                       bool initialSync)
+    {
+        if (contentKey.isEmpty()) {
+            return false;
+        }
+
+        QSettings settings;
+        if (!settings.contains(ClipboardLastHandledContentKey)) {
+            if (initialSync) {
+                settings.setValue(ClipboardLastHandledContentKey, contentKey);
+                return false;
+            }
+            return true;
+        }
+        return settings.value(ClipboardLastHandledContentKey).toByteArray() !=
+                contentKey;
+    }
+
+    void establishEmptyClipboardBaseline()
+    {
+        QSettings settings;
+        if (!settings.contains(ClipboardLastHandledContentKey)) {
+            settings.setValue(
+                        ClipboardLastHandledContentKey,
+                        clipboardContentKey(0, QByteArray()));
+        }
     }
 
     bool captureClipboardHttpContext(NvComputer* computer,
@@ -687,12 +744,14 @@ namespace {
                                 QByteArray content,
                                 quint8 targetMimeType,
                                 quint64 originId,
+                                QByteArray contentKey,
                                 quint64 generation,
                                 std::shared_ptr<ClipboardTransferState> transferState)
             : m_HttpContext(std::move(httpContext)),
               m_Content(std::move(content)),
               m_TargetMimeType(targetMimeType),
               m_OriginId(originId),
+              m_ContentKey(std::move(contentKey)),
               m_Generation(generation),
               m_TransferState(std::move(transferState))
         {
@@ -725,6 +784,7 @@ namespace {
                     result.id,
                     result.size,
                     result.sha256,
+                    m_ContentKey,
                     m_Generation,
                     m_TransferState,
                 };
@@ -751,6 +811,7 @@ namespace {
         QByteArray m_Content;
         quint8 m_TargetMimeType;
         quint64 m_OriginId;
+        QByteArray m_ContentKey;
         quint64 m_Generation;
         std::shared_ptr<ClipboardTransferState> m_TransferState;
     };
@@ -866,12 +927,14 @@ namespace {
                 QVector<ClipboardFileEntry> entries,
                 QByteArray manifest,
                 quint64 originId,
+                QByteArray contentKey,
                 quint64 generation,
                 std::shared_ptr<ClipboardTransferState> transferState)
             : m_HttpContext(std::move(httpContext)),
               m_Entries(std::move(entries)),
               m_Manifest(std::move(manifest)),
               m_OriginId(originId),
+              m_ContentKey(std::move(contentKey)),
               m_Generation(generation),
               m_TransferState(std::move(transferState))
         {
@@ -901,6 +964,7 @@ namespace {
                     result.id,
                     result.size,
                     result.sha256,
+                    m_ContentKey,
                     m_Generation,
                     m_TransferState,
                 };
@@ -1032,6 +1096,7 @@ namespace {
         QVector<ClipboardFileEntry> m_Entries;
         QByteArray m_Manifest;
         quint64 m_OriginId;
+        QByteArray m_ContentKey;
         quint64 m_Generation;
         std::shared_ptr<ClipboardTransferState> m_TransferState;
     };
@@ -1321,6 +1386,11 @@ void Session::applyRemoteClipboardContent(const ClipboardEvent* clipboardEvent)
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "Failed to set virtual file clipboard");
         }
+        else {
+            rememberClipboardContent(clipboardContentKey(
+                        LI_CLIPBOARD_MIME_FILE_MANIFEST,
+                        clipboardEvent->data));
+        }
 #endif
         return;
     }
@@ -1333,6 +1403,9 @@ void Session::applyRemoteClipboardContent(const ClipboardEvent* clipboardEvent)
                       clipboardMarker(clipboardEvent->originId,
                                       clipboardEvent->itemId));
     clipboard->setMimeData(mimeData, QClipboard::Clipboard);
+    rememberClipboardContent(clipboardContentKey(
+                clipboardEvent->mimeType,
+                clipboardEvent->data));
 }
 
 void Session::completeClipboardBlobUpload(
@@ -1368,9 +1441,12 @@ void Session::completeClipboardBlobUpload(
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Failed to announce clipboard blob");
     }
+    else {
+        rememberClipboardContent(uploadEvent->contentKey);
+    }
 }
 
-void Session::sendCurrentClipboardContent(bool forceCurrentContent)
+void Session::sendCurrentClipboardContent(bool initialSync)
 {
     if (!m_StreamConfig.enableClipboardSync ||
             !m_ClipboardSyncReady.load() ||
@@ -1381,12 +1457,15 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
     const quint64 generation = ++m_ClipboardTransferState->localGeneration;
     QClipboard* clipboard = QGuiApplication::clipboard();
     if (clipboard == nullptr) {
+        if (initialSync) {
+            establishEmptyClipboardBaseline();
+        }
         return;
     }
 #ifdef Q_OS_WIN32
     const QByteArray markerMime(ClipboardMarkerMime);
     if (ClipboardVirtualFiles::hasRemoteFiles(markerMime) ||
-            (!forceCurrentContent &&
+            (!initialSync &&
              ClipboardVirtualFiles::hasMarker(markerMime))) {
         return;
     }
@@ -1395,10 +1474,13 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
     const QMimeData* mimeData =
             clipboard->mimeData(QClipboard::Clipboard);
     if (mimeData == nullptr) {
+        if (initialSync) {
+            establishEmptyClipboardBaseline();
+        }
         return;
     }
 #ifndef Q_OS_WIN32
-    if (!forceCurrentContent &&
+    if (!initialSync &&
             mimeData->hasFormat(ClipboardMarkerMime)) {
         return;
     }
@@ -1436,6 +1518,11 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
                             "Clipboard file list contains unsupported or unsafe entries");
                 return;
             }
+            const QByteArray contentKey = clipboardContentKey(
+                        LI_CLIPBOARD_MIME_FILE_MANIFEST, manifest);
+            if (!shouldPublishClipboardContent(contentKey, initialSync)) {
+                return;
+            }
 
             const quint64 originId = LiGetClipboardOriginId();
             ClipboardHttpContext httpContext;
@@ -1451,6 +1538,7 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
                             std::move(entries),
                             std::move(manifest),
                             originId,
+                            contentKey,
                             generation,
                             m_ClipboardTransferState));
             return;
@@ -1478,6 +1566,11 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
                     return;
                 }
             }
+            const QByteArray contentKey = clipboardContentKey(
+                        LI_CLIPBOARD_MIME_PNG, png);
+            if (!shouldPublishClipboardContent(contentKey, initialSync)) {
+                return;
+            }
 
             if (png.size() <= static_cast<int>(LI_CLIPBOARD_MAX_PNG_INLINE_BYTES)) {
                 if (LiSendClipboardContent(
@@ -1486,6 +1579,9 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
                             static_cast<uint32_t>(png.size())) != 0) {
                     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                                 "Failed to announce clipboard PNG");
+                }
+                else {
+                    rememberClipboardContent(contentKey);
                 }
                 return;
             }
@@ -1503,6 +1599,7 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
                                     std::move(png),
                                     LI_CLIPBOARD_MIME_PNG,
                                     originId,
+                                    contentKey,
                                     generation,
                                     m_ClipboardTransferState));
                 }
@@ -1523,11 +1620,19 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
             (hostCapabilities & LI_CLIPBOARD_CAP_TEXT) == 0 ||
             (localCapabilities & LI_CLIPBOARD_CAP_TEXT) == 0 ||
             !mimeData->hasText()) {
+        if (initialSync) {
+            establishEmptyClipboardBaseline();
+        }
         return;
     }
 
     QByteArray text = mimeData->text().toUtf8();
     if (text.size() > static_cast<int>(LI_CLIPBOARD_MAX_TEXT_BYTES)) {
+        return;
+    }
+    const QByteArray contentKey = clipboardContentKey(
+                LI_CLIPBOARD_MIME_TEXT_UTF8, text);
+    if (!shouldPublishClipboardContent(contentKey, initialSync)) {
         return;
     }
 
@@ -1538,6 +1643,9 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
     if (result != 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Failed to announce clipboard text");
+    }
+    else {
+        rememberClipboardContent(contentKey);
     }
 }
 

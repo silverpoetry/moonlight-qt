@@ -298,7 +298,7 @@ private:
     void applyNativeCursor(const NativeCursorEvent* cursorEvent);
     void applyRemoteClipboardContent(const ClipboardEvent* clipboardEvent);
     void completeClipboardBlobUpload(const ClipboardBlobUploadEvent* uploadEvent);
-    void sendCurrentClipboardContent(bool forceCurrentContent = false);
+    void sendCurrentClipboardContent(bool initialSync = false);
     void deactivateClipboardSync();
 
     StreamingPreferences* m_Preferences;
