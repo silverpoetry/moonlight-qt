@@ -210,7 +210,10 @@ void StreamingPreferences::reload()
     enableTouchpadGestures = settings.value(SER_ENABLETOUCHPADGESTURES, false).toBool();
     disableAdaptiveInputThrottling = settings.value(SER_DISABLEADAPTIVEINPUTTHROTTLING, true).toBool();
     enableClipboardSync = settings.value(SER_ENABLECLIPBOARDSYNC, false).toBool();
-    enableClipboardImageSync = settings.value(SER_ENABLECLIPBOARDIMAGESYNC, false).toBool();
+    enableClipboardImageSync = settings.value(
+                SER_ENABLECLIPBOARDIMAGESYNC,
+                settings.contains(SER_ENABLECLIPBOARDSYNC) &&
+                    enableClipboardSync).toBool();
     framePacing = settings.value(SER_FRAMEPACING, false).toBool();
     connectionWarnings = settings.value(SER_CONNWARNINGS, true).toBool();
     configurationWarnings = settings.value(SER_CONFWARNINGS, true).toBool();
