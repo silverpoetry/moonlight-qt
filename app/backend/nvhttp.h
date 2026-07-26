@@ -197,6 +197,32 @@ public:
                           quint32 expectedSize,
                           const QByteArray& expectedSha256);
 
+    ClipboardBlobUploadResult
+    beginClipboardFileUpload(const QByteArray& manifest, quint64 originId);
+
+    void
+    uploadClipboardFileChunk(const QString& id,
+                             quint32 fileIndex,
+                             quint64 offset,
+                             const QByteArray& content,
+                             quint64 originId);
+
+    void
+    completeClipboardFileUpload(const QString& id, quint64 originId);
+
+    QByteArray
+    downloadClipboardFileManifest(const QString& id,
+                                  quint64 requestOriginId,
+                                  quint32 expectedSize,
+                                  const QByteArray& expectedSha256);
+
+    QByteArray
+    downloadClipboardFileChunk(const QString& id,
+                               quint32 fileIndex,
+                               quint64 offset,
+                               quint32 length,
+                               quint64 requestOriginId);
+
     static
     QVector<NvDisplayMode>
     getDisplayModeList(QString serverInfo);

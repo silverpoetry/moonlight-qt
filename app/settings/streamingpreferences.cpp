@@ -38,6 +38,7 @@
 #define SER_DISABLEADAPTIVEINPUTTHROTTLING "disableadaptiveinputthrottling"
 #define SER_ENABLECLIPBOARDSYNC "enableclipboardsync"
 #define SER_ENABLECLIPBOARDIMAGESYNC "enableclipboardimagesync"
+#define SER_ENABLECLIPBOARDFILESYNC "enableclipboardfilesync"
 #define SER_STARTWINDOWED "startwindowed"
 #define SER_FRAMEPACING "framepacing"
 #define SER_CONNWARNINGS "connwarnings"
@@ -214,6 +215,7 @@ void StreamingPreferences::reload()
                 SER_ENABLECLIPBOARDIMAGESYNC,
                 settings.contains(SER_ENABLECLIPBOARDSYNC) &&
                     enableClipboardSync).toBool();
+    enableClipboardFileSync = settings.value(SER_ENABLECLIPBOARDFILESYNC, false).toBool();
     framePacing = settings.value(SER_FRAMEPACING, false).toBool();
     connectionWarnings = settings.value(SER_CONNWARNINGS, true).toBool();
     configurationWarnings = settings.value(SER_CONFWARNINGS, true).toBool();
@@ -419,6 +421,7 @@ void StreamingPreferences::save()
     settings.setValue(SER_DISABLEADAPTIVEINPUTTHROTTLING, disableAdaptiveInputThrottling);
     settings.setValue(SER_ENABLECLIPBOARDSYNC, enableClipboardSync);
     settings.setValue(SER_ENABLECLIPBOARDIMAGESYNC, enableClipboardImageSync);
+    settings.setValue(SER_ENABLECLIPBOARDFILESYNC, enableClipboardFileSync);
     settings.setValue(SER_FRAMEPACING, framePacing);
     settings.setValue(SER_CONNWARNINGS, connectionWarnings);
     settings.setValue(SER_CONFWARNINGS, configurationWarnings);

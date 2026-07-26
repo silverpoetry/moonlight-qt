@@ -8,6 +8,8 @@
 #include "SDL_syswm.h"
 #include "utils.h"
 
+#include <algorithm>
+
 #ifdef HAVE_FFMPEG
 #include "video/ffmpeg.h"
 #endif
@@ -53,6 +55,16 @@
 #include <QClipboard>
 #include <QMimeData>
 #include <QReadLocker>
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QSet>
+#include <QStandardPaths>
+#include <QUrl>
+#include <QUuid>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QQuickOpenGLUtils>
@@ -412,6 +424,7 @@ struct ClipboardEvent
     quint64 originId;
     quint64 itemId;
     QByteArray data;
+    QList<QUrl> urls;
     quint64 generation;
     std::shared_ptr<ClipboardTransferState> transferState;
 };
@@ -434,6 +447,17 @@ struct ClipboardBlobUploadEvent
 namespace {
     constexpr auto ClipboardMarkerMime = "application/x-moonlight-clipboard-v2";
     constexpr int ClipboardMaxBlobBytes = 32 * 1024 * 1024;
+    constexpr int ClipboardFileChunkBytes = 4 * 1024 * 1024;
+    constexpr int ClipboardFileCacheLifetimeSeconds = 24 * 60 * 60;
+
+    struct ClipboardFileEntry
+    {
+        quint8 type;
+        QString relativePath;
+        QString localPath;
+        quint64 size;
+        quint64 modifiedTimeMs;
+    };
 
     struct ClipboardHttpContext
     {
@@ -475,6 +499,248 @@ namespace {
         event.user.code = code;
         event.user.data1 = data;
         return SDL_PushEvent(&event) >= 0;
+    }
+
+    bool appendClipboardFileEntry(const QString& localPath,
+                                  const QString& relativePath,
+                                  int depth,
+                                  QVector<ClipboardFileEntry>& entries,
+                                  quint64& totalFileBytes,
+                                  quint32& fileCount)
+    {
+        if (depth > 128 ||
+                entries.size() >= static_cast<int>(LI_CLIPBOARD_MAX_FILE_ENTRIES)) {
+            return false;
+        }
+
+        const QFileInfo info(localPath);
+        if (!info.exists() ||
+                info.isSymLink() ||
+                (!info.isFile() && !info.isDir())) {
+            return false;
+        }
+
+        const QByteArray path = relativePath.toUtf8();
+        ClipboardFileEntry entry {
+            static_cast<quint8>(
+                info.isDir() ?
+                    LI_CLIPBOARD_FILE_TYPE_DIRECTORY :
+                    LI_CLIPBOARD_FILE_TYPE_REGULAR),
+            relativePath,
+            info.absoluteFilePath(),
+            info.isFile() ? static_cast<quint64>(info.size()) : 0,
+            info.lastModified().isValid() ?
+                static_cast<quint64>(qMax<qint64>(
+                    0, info.lastModified().toMSecsSinceEpoch())) :
+                0,
+        };
+        LI_CLIPBOARD_FILE_MANIFEST_ENTRY protocolEntry {
+            entry.type,
+            static_cast<quint32>(path.size()),
+            entry.size,
+            entry.modifiedTimeMs,
+            reinterpret_cast<const uint8_t*>(path.constData()),
+        };
+        QByteArray validationBuffer(
+                    LI_CLIPBOARD_FILE_MANIFEST_ENTRY_HEADER_SIZE + path.size(),
+                    Qt::Uninitialized);
+        size_t encodedLength = 0;
+        if (!LiEncodeClipboardFileManifestEntry(
+                    reinterpret_cast<uint8_t*>(validationBuffer.data()),
+                    static_cast<size_t>(validationBuffer.size()),
+                    &protocolEntry,
+                    &encodedLength)) {
+            return false;
+        }
+
+        if (entry.type == LI_CLIPBOARD_FILE_TYPE_REGULAR) {
+            if (entry.size > LI_CLIPBOARD_MAX_FILE_BYTES ||
+                    totalFileBytes >
+                        LI_CLIPBOARD_MAX_FILE_TRANSFER_BYTES - entry.size) {
+                return false;
+            }
+            totalFileBytes += entry.size;
+            fileCount++;
+        }
+        entries.append(std::move(entry));
+
+        if (!info.isDir()) {
+            return true;
+        }
+
+        QDir directory(info.absoluteFilePath());
+        const QFileInfoList children = directory.entryInfoList(
+                    QDir::AllEntries |
+                    QDir::Hidden |
+                    QDir::System |
+                    QDir::NoDotAndDotDot,
+                    QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
+        for (const QFileInfo& child : children) {
+            if (!appendClipboardFileEntry(
+                        child.absoluteFilePath(),
+                        relativePath + "/" + child.fileName(),
+                        depth + 1,
+                        entries,
+                        totalFileBytes,
+                        fileCount)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool buildClipboardFileManifest(const QList<QUrl>& urls,
+                                    QVector<ClipboardFileEntry>& entries,
+                                    QByteArray& manifest)
+    {
+        if (urls.isEmpty()) {
+            return false;
+        }
+
+        QSet<QString> topLevelNames;
+        quint64 totalFileBytes = 0;
+        quint32 fileCount = 0;
+        for (const QUrl& url : urls) {
+            if (!url.isLocalFile()) {
+                return false;
+            }
+
+            const QFileInfo info(url.toLocalFile());
+            const QString name = info.fileName();
+            const QString foldedName = name.toCaseFolded();
+            if (name.isEmpty() || topLevelNames.contains(foldedName)) {
+                return false;
+            }
+            topLevelNames.insert(foldedName);
+            if (!appendClipboardFileEntry(
+                        info.absoluteFilePath(),
+                        name,
+                        0,
+                        entries,
+                        totalFileBytes,
+                        fileCount)) {
+                return false;
+            }
+        }
+
+        qsizetype manifestSize = LI_CLIPBOARD_FILE_MANIFEST_HEADER_SIZE;
+        for (const ClipboardFileEntry& entry : entries) {
+            manifestSize += LI_CLIPBOARD_FILE_MANIFEST_ENTRY_HEADER_SIZE +
+                    entry.relativePath.toUtf8().size();
+        }
+        if (entries.isEmpty() ||
+                manifestSize > static_cast<qsizetype>(
+                    LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES)) {
+            return false;
+        }
+
+        manifest.resize(manifestSize);
+        LI_CLIPBOARD_FILE_MANIFEST_HEADER header {
+            static_cast<quint32>(entries.size()),
+            fileCount,
+            totalFileBytes,
+        };
+        if (!LiEncodeClipboardFileManifestHeader(
+                    reinterpret_cast<uint8_t*>(manifest.data()),
+                    static_cast<size_t>(manifest.size()),
+                    &header)) {
+            return false;
+        }
+
+        size_t offset = LI_CLIPBOARD_FILE_MANIFEST_HEADER_SIZE;
+        for (const ClipboardFileEntry& entry : entries) {
+            const QByteArray path = entry.relativePath.toUtf8();
+            LI_CLIPBOARD_FILE_MANIFEST_ENTRY protocolEntry {
+                entry.type,
+                static_cast<quint32>(path.size()),
+                entry.size,
+                entry.modifiedTimeMs,
+                reinterpret_cast<const uint8_t*>(path.constData()),
+            };
+            size_t encodedLength = 0;
+            if (!LiEncodeClipboardFileManifestEntry(
+                        reinterpret_cast<uint8_t*>(manifest.data()) + offset,
+                        static_cast<size_t>(manifest.size()) - offset,
+                        &protocolEntry,
+                        &encodedLength)) {
+                return false;
+            }
+            offset += encodedLength;
+        }
+        return offset == static_cast<size_t>(manifest.size()) &&
+                LiIsValidClipboardFileManifest(
+                    reinterpret_cast<const uint8_t*>(manifest.constData()),
+                    static_cast<size_t>(manifest.size()));
+    }
+
+    bool decodeClipboardFileManifest(const QByteArray& manifest,
+                                     QVector<ClipboardFileEntry>& entries)
+    {
+        LI_CLIPBOARD_FILE_MANIFEST_HEADER header;
+        if (!LiIsValidClipboardFileManifest(
+                    reinterpret_cast<const uint8_t*>(manifest.constData()),
+                    static_cast<size_t>(manifest.size())) ||
+                !LiDecodeClipboardFileManifestHeader(
+                    reinterpret_cast<const uint8_t*>(manifest.constData()),
+                    static_cast<size_t>(manifest.size()),
+                    &header)) {
+            return false;
+        }
+
+        entries.reserve(static_cast<int>(header.entryCount));
+        size_t offset = LI_CLIPBOARD_FILE_MANIFEST_HEADER_SIZE;
+        for (quint32 index = 0; index < header.entryCount; index++) {
+            LI_CLIPBOARD_FILE_MANIFEST_ENTRY protocolEntry;
+            if (!LiDecodeClipboardFileManifestEntry(
+                        reinterpret_cast<const uint8_t*>(manifest.constData()),
+                        static_cast<size_t>(manifest.size()),
+                        &offset,
+                        &protocolEntry)) {
+                return false;
+            }
+            entries.append({
+                protocolEntry.type,
+                QString::fromUtf8(
+                    reinterpret_cast<const char*>(protocolEntry.path),
+                    static_cast<int>(protocolEntry.pathLength)),
+                {},
+                protocolEntry.size,
+                protocolEntry.modifiedTimeMs,
+            });
+        }
+        return true;
+    }
+
+    QString prepareClipboardFileCache(const QString& transferId)
+    {
+        const QString cacheRoot =
+                QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
+                "/clipboard-files";
+        QDir root(cacheRoot);
+        if (!root.mkpath(".")) {
+            return {};
+        }
+
+        const QDateTime cutoff =
+                QDateTime::currentDateTimeUtc().addSecs(
+                    -ClipboardFileCacheLifetimeSeconds);
+        const QFileInfoList staleDirectories = root.entryInfoList(
+                    QDir::Dirs | QDir::NoDotAndDotDot,
+                    QDir::Time);
+        for (const QFileInfo& directory : staleDirectories) {
+            if (directory.lastModified().toUTC() < cutoff) {
+                QDir(directory.absoluteFilePath()).removeRecursively();
+            }
+        }
+
+        QString destination = root.filePath(transferId);
+        if (QFileInfo::exists(destination)) {
+            destination += "-" +
+                    QUuid::createUuid().toString(QUuid::WithoutBraces);
+        }
+        return QDir().mkpath(destination) ?
+                    QDir::cleanPath(destination) :
+                    QString {};
     }
 
     void postClipboardReadyEvent(
@@ -629,6 +895,7 @@ namespace {
                     m_ContentOriginId,
                     m_ContentItemId,
                     std::move(content),
+                    {},
                     m_Generation,
                     m_TransferState,
                 };
@@ -659,6 +926,315 @@ namespace {
         quint64 m_RequestOriginId;
         quint32 m_ExpectedSize;
         QByteArray m_ExpectedSha256;
+        quint64 m_Generation;
+        std::shared_ptr<ClipboardTransferState> m_TransferState;
+    };
+
+    class ClipboardFileUploadTask : public QRunnable
+    {
+    public:
+        ClipboardFileUploadTask(
+                ClipboardHttpContext httpContext,
+                QVector<ClipboardFileEntry> entries,
+                QByteArray manifest,
+                quint64 originId,
+                quint64 generation,
+                std::shared_ptr<ClipboardTransferState> transferState)
+            : m_HttpContext(std::move(httpContext)),
+              m_Entries(std::move(entries)),
+              m_Manifest(std::move(manifest)),
+              m_OriginId(originId),
+              m_Generation(generation),
+              m_TransferState(std::move(transferState))
+        {
+        }
+
+        void run() override
+        {
+            if (!isCurrent()) {
+                return;
+            }
+
+            try {
+                NvHTTP http(m_HttpContext.address,
+                            m_HttpContext.httpsPort,
+                            m_HttpContext.serverCertificate,
+                            m_HttpContext.useTrueUid);
+                const auto result =
+                        http.beginClipboardFileUpload(m_Manifest, m_OriginId);
+
+                for (int index = 0; index < m_Entries.size(); index++) {
+                    if (!isCurrent()) {
+                        return;
+                    }
+                    const ClipboardFileEntry& entry = m_Entries.at(index);
+                    if (entry.type != LI_CLIPBOARD_FILE_TYPE_REGULAR) {
+                        continue;
+                    }
+
+                    QFile input(entry.localPath);
+                    if (!input.open(QIODevice::ReadOnly) ||
+                            static_cast<quint64>(input.size()) != entry.size) {
+                        throw std::runtime_error(
+                                    "Clipboard source file changed before upload");
+                    }
+
+                    quint64 offset = 0;
+                    while (offset < entry.size) {
+                        if (!isCurrent()) {
+                            return;
+                        }
+                        const qint64 requested = static_cast<qint64>(
+                                    qMin<quint64>(
+                                        ClipboardFileChunkBytes,
+                                        entry.size - offset));
+                        const QByteArray chunk = input.read(requested);
+                        if (chunk.size() != requested) {
+                            throw std::runtime_error(
+                                        "Failed to read clipboard source file");
+                        }
+                        http.uploadClipboardFileChunk(
+                                    result.id,
+                                    static_cast<quint32>(index),
+                                    offset,
+                                    chunk,
+                                    m_OriginId);
+                        offset += static_cast<quint64>(chunk.size());
+                    }
+                    if (static_cast<quint64>(QFileInfo(entry.localPath).size()) !=
+                            entry.size) {
+                        throw std::runtime_error(
+                                    "Clipboard source file changed during upload");
+                    }
+                }
+
+                if (!isCurrent()) {
+                    return;
+                }
+                http.completeClipboardFileUpload(result.id, m_OriginId);
+                if (!isCurrent()) {
+                    return;
+                }
+
+                ClipboardBlobUploadEvent* uploadEvent =
+                        new ClipboardBlobUploadEvent {
+                    LI_CLIPBOARD_MIME_FILE_MANIFEST,
+                    result.id,
+                    result.size,
+                    result.sha256,
+                    m_Generation,
+                    m_TransferState,
+                };
+                if (!pushClipboardEvent(SDL_CODE_CLIPBOARD_BLOB_UPLOADED,
+                                        uploadEvent)) {
+                    delete uploadEvent;
+                }
+            }
+            catch (const std::exception& error) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Clipboard file upload failed: %s",
+                            error.what());
+            }
+        }
+
+    private:
+        bool isCurrent() const
+        {
+            return m_TransferState->active.load() &&
+                    m_TransferState->localGeneration.load() == m_Generation;
+        }
+
+        ClipboardHttpContext m_HttpContext;
+        QVector<ClipboardFileEntry> m_Entries;
+        QByteArray m_Manifest;
+        quint64 m_OriginId;
+        quint64 m_Generation;
+        std::shared_ptr<ClipboardTransferState> m_TransferState;
+    };
+
+    class ClipboardFileDownloadTask : public QRunnable
+    {
+    public:
+        ClipboardFileDownloadTask(
+                ClipboardHttpContext httpContext,
+                QString id,
+                quint64 contentOriginId,
+                quint64 contentItemId,
+                quint64 requestOriginId,
+                quint32 expectedManifestSize,
+                QByteArray expectedManifestSha256,
+                quint64 generation,
+                std::shared_ptr<ClipboardTransferState> transferState)
+            : m_HttpContext(std::move(httpContext)),
+              m_Id(std::move(id)),
+              m_ContentOriginId(contentOriginId),
+              m_ContentItemId(contentItemId),
+              m_RequestOriginId(requestOriginId),
+              m_ExpectedManifestSize(expectedManifestSize),
+              m_ExpectedManifestSha256(std::move(expectedManifestSha256)),
+              m_Generation(generation),
+              m_TransferState(std::move(transferState))
+        {
+        }
+
+        void run() override
+        {
+            QString transferRoot;
+            try {
+                if (!isCurrent()) {
+                    return;
+                }
+
+                NvHTTP http(m_HttpContext.address,
+                            m_HttpContext.httpsPort,
+                            m_HttpContext.serverCertificate,
+                            m_HttpContext.useTrueUid);
+                const QByteArray manifest = http.downloadClipboardFileManifest(
+                            m_Id,
+                            m_RequestOriginId,
+                            m_ExpectedManifestSize,
+                            m_ExpectedManifestSha256);
+                QVector<ClipboardFileEntry> entries;
+                if (!decodeClipboardFileManifest(manifest, entries)) {
+                    throw std::runtime_error(
+                                "Invalid clipboard file manifest");
+                }
+
+                transferRoot = prepareClipboardFileCache(m_Id);
+                if (transferRoot.isEmpty()) {
+                    throw std::runtime_error(
+                                "Clipboard file cache is unavailable");
+                }
+                const QString rootPrefix =
+                        QDir::cleanPath(transferRoot) + QDir::separator();
+                QList<QUrl> urls;
+
+                for (int index = 0; index < entries.size(); index++) {
+                    if (!isCurrent()) {
+                        QDir(transferRoot).removeRecursively();
+                        return;
+                    }
+
+                    ClipboardFileEntry& entry = entries[index];
+                    const QString destination = QDir::cleanPath(
+                                QDir(transferRoot).filePath(entry.relativePath));
+                    if (!destination.startsWith(
+                                rootPrefix,
+                                Qt::CaseInsensitive)) {
+                        throw std::runtime_error(
+                                    "Clipboard file path escaped the cache");
+                    }
+                    entry.localPath = destination;
+
+                    if (!entry.relativePath.contains('/')) {
+                        urls.append(QUrl::fromLocalFile(destination));
+                    }
+                    if (entry.type == LI_CLIPBOARD_FILE_TYPE_DIRECTORY) {
+                        if (!QDir().mkpath(destination)) {
+                            throw std::runtime_error(
+                                        "Failed to create clipboard directory");
+                        }
+                        continue;
+                    }
+
+                    if (!QDir().mkpath(QFileInfo(destination).absolutePath())) {
+                        throw std::runtime_error(
+                                    "Failed to create clipboard file parent");
+                    }
+                    QSaveFile output(destination);
+                    if (!output.open(QIODevice::WriteOnly)) {
+                        throw std::runtime_error(
+                                    "Failed to create clipboard file");
+                    }
+
+                    quint64 offset = 0;
+                    while (offset < entry.size) {
+                        if (!isCurrent()) {
+                            output.cancelWriting();
+                            QDir(transferRoot).removeRecursively();
+                            return;
+                        }
+                        const quint32 length = static_cast<quint32>(
+                                    qMin<quint64>(
+                                        ClipboardFileChunkBytes,
+                                        entry.size - offset));
+                        const QByteArray chunk =
+                                http.downloadClipboardFileChunk(
+                                    m_Id,
+                                    static_cast<quint32>(index),
+                                    offset,
+                                    length,
+                                    m_RequestOriginId);
+                        if (output.write(chunk) != chunk.size()) {
+                            throw std::runtime_error(
+                                        "Failed to write clipboard file");
+                        }
+                        offset += static_cast<quint64>(chunk.size());
+                    }
+                    if (!output.commit()) {
+                        throw std::runtime_error(
+                                    "Failed to commit clipboard file");
+                    }
+                    if (entry.modifiedTimeMs != 0) {
+                        QFile completedFile(destination);
+                        if (completedFile.open(QIODevice::ReadOnly)) {
+                            completedFile.setFileTime(
+                                QDateTime::fromMSecsSinceEpoch(
+                                    static_cast<qint64>(entry.modifiedTimeMs),
+                                    Qt::UTC),
+                                QFileDevice::FileModificationTime
+                            );
+                        }
+                    }
+                }
+
+                if (!isCurrent()) {
+                    QDir(transferRoot).removeRecursively();
+                    return;
+                }
+                if (urls.isEmpty()) {
+                    throw std::runtime_error(
+                                "Clipboard file list has no top-level entries");
+                }
+
+                ClipboardEvent* clipboardEvent = new ClipboardEvent {
+                    LI_CLIPBOARD_MIME_FILE_MANIFEST,
+                    m_ContentOriginId,
+                    m_ContentItemId,
+                    {},
+                    std::move(urls),
+                    m_Generation,
+                    m_TransferState,
+                };
+                if (!pushClipboardEvent(SDL_CODE_CLIPBOARD_CONTENT,
+                                        clipboardEvent)) {
+                    delete clipboardEvent;
+                }
+            }
+            catch (const std::exception& error) {
+                if (!transferRoot.isEmpty()) {
+                    QDir(transferRoot).removeRecursively();
+                }
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Clipboard file download failed: %s",
+                            error.what());
+            }
+        }
+
+    private:
+        bool isCurrent() const
+        {
+            return m_TransferState->active.load() &&
+                    m_TransferState->remoteGeneration.load() == m_Generation;
+        }
+
+        ClipboardHttpContext m_HttpContext;
+        QString m_Id;
+        quint64 m_ContentOriginId;
+        quint64 m_ContentItemId;
+        quint64 m_RequestOriginId;
+        quint32 m_ExpectedManifestSize;
+        QByteArray m_ExpectedManifestSha256;
         quint64 m_Generation;
         std::shared_ptr<ClipboardTransferState> m_TransferState;
     };
@@ -724,7 +1300,10 @@ void Session::clClipboardContent(PSS_CLIPBOARD_CONTENT content)
                     reference.targetMimeType,
                     session->m_StreamConfig.clipboardCapabilities) ||
                 reference.size == 0 ||
-                reference.size > static_cast<quint32>(ClipboardMaxBlobBytes)) {
+                (reference.targetMimeType == LI_CLIPBOARD_MIME_FILE_MANIFEST ?
+                    reference.size > LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES :
+                    reference.size > static_cast<quint32>(
+                        ClipboardMaxBlobBytes))) {
             return;
         }
 
@@ -738,7 +1317,24 @@ void Session::clClipboardContent(PSS_CLIPBOARD_CONTENT content)
         }
 
         const quint64 generation = ++transferState->remoteGeneration;
-        QThreadPool::globalInstance()->start(
+        if (reference.targetMimeType ==
+                LI_CLIPBOARD_MIME_FILE_MANIFEST) {
+            QThreadPool::globalInstance()->start(
+                    new ClipboardFileDownloadTask(
+                        std::move(httpContext),
+                        QString::fromLatin1(reference.id, reference.idLength),
+                        content->originId,
+                        content->itemId,
+                        requestOriginId,
+                        reference.size,
+                        QByteArray(
+                            reinterpret_cast<const char*>(reference.sha256),
+                            LI_CLIPBOARD_SHA256_BYTES),
+                        generation,
+                        transferState));
+        }
+        else {
+            QThreadPool::globalInstance()->start(
                     new ClipboardBlobDownloadTask(
                         std::move(httpContext),
                         QString::fromLatin1(reference.id, reference.idLength),
@@ -752,6 +1348,7 @@ void Session::clClipboardContent(PSS_CLIPBOARD_CONTENT content)
                             LI_CLIPBOARD_SHA256_BYTES),
                         generation,
                         transferState));
+        }
         return;
     }
 
@@ -829,6 +1426,11 @@ void Session::applyRemoteClipboardContent(const ClipboardEvent* clipboardEvent)
         mimeData->setData("image/png", clipboardEvent->data);
         mimeData->setImageData(image);
     }
+    else if (clipboardEvent->mimeType ==
+                 LI_CLIPBOARD_MIME_FILE_MANIFEST &&
+             !clipboardEvent->urls.isEmpty()) {
+        mimeData->setUrls(clipboardEvent->urls);
+    }
     else {
         delete mimeData;
         return;
@@ -857,6 +1459,9 @@ void Session::completeClipboardBlobUpload(
             !LiIsClipboardMimeSupported(
                 uploadEvent->targetMimeType,
                 m_StreamConfig.clipboardCapabilities) ||
+            !LiIsClipboardMimeSupported(
+                uploadEvent->targetMimeType,
+                m_ClipboardHostCapabilities.load()) ||
             uploadEvent->sha256.size() != LI_CLIPBOARD_SHA256_BYTES) {
         return;
     }
@@ -894,6 +1499,54 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
     const auto hostCapabilities = m_ClipboardHostCapabilities.load();
     const auto protocolVersion = m_ClipboardProtocolVersion.load();
     const auto localCapabilities = m_StreamConfig.clipboardCapabilities;
+    if (protocolVersion == LI_CLIPBOARD_VERSION_V2 &&
+            (hostCapabilities &
+                (LI_CLIPBOARD_CAP_CAN_RECEIVE |
+                 LI_CLIPBOARD_CAP_BLOB |
+                 LI_CLIPBOARD_CAP_FILES)) ==
+                (LI_CLIPBOARD_CAP_CAN_RECEIVE |
+                 LI_CLIPBOARD_CAP_BLOB |
+                 LI_CLIPBOARD_CAP_FILES) &&
+            (localCapabilities &
+                (LI_CLIPBOARD_CAP_BLOB |
+                 LI_CLIPBOARD_CAP_FILES)) ==
+                (LI_CLIPBOARD_CAP_BLOB |
+                 LI_CLIPBOARD_CAP_FILES) &&
+            mimeData->hasUrls()) {
+        const QList<QUrl> urls = mimeData->urls();
+        const bool allLocalFiles = !urls.isEmpty() &&
+                std::all_of(urls.cbegin(), urls.cend(), [](const QUrl& url) {
+            return url.isLocalFile();
+        });
+        if (allLocalFiles) {
+            QVector<ClipboardFileEntry> entries;
+            QByteArray manifest;
+            if (!buildClipboardFileManifest(urls, entries, manifest)) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Clipboard file list contains unsupported or unsafe entries");
+                return;
+            }
+
+            const quint64 originId = LiGetClipboardOriginId();
+            ClipboardHttpContext httpContext;
+            if (originId == 0 ||
+                    !captureClipboardHttpContext(m_Computer, httpContext)) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Clipboard file upload is unavailable");
+                return;
+            }
+            QThreadPool::globalInstance()->start(
+                        new ClipboardFileUploadTask(
+                            std::move(httpContext),
+                            std::move(entries),
+                            std::move(manifest),
+                            originId,
+                            generation,
+                            m_ClipboardTransferState));
+            return;
+        }
+    }
+
     if (protocolVersion == LI_CLIPBOARD_VERSION_V2 &&
             (hostCapabilities & LI_CLIPBOARD_CAP_CAN_RECEIVE) != 0 &&
             (hostCapabilities & LI_CLIPBOARD_CAP_PNG) != 0 &&
@@ -1695,7 +2348,8 @@ bool Session::initialize(QQuickWindow* qtWindow)
     m_StreamConfig.enableNativeCursor = m_Preferences->absoluteMouseMode;
     m_StreamConfig.enableClipboardSync =
             m_Preferences->enableClipboardSync ||
-            m_Preferences->enableClipboardImageSync;
+            m_Preferences->enableClipboardImageSync ||
+            m_Preferences->enableClipboardFileSync;
     m_StreamConfig.clipboardCapabilities = 0;
     if (m_StreamConfig.enableClipboardSync) {
         m_StreamConfig.clipboardCapabilities =
@@ -1708,6 +2362,11 @@ bool Session::initialize(QQuickWindow* qtWindow)
     if (m_Preferences->enableClipboardImageSync) {
         m_StreamConfig.clipboardCapabilities |=
                 LI_CLIPBOARD_CAP_PNG |
+                LI_CLIPBOARD_CAP_BLOB;
+    }
+    if (m_Preferences->enableClipboardFileSync) {
+        m_StreamConfig.clipboardCapabilities |=
+                LI_CLIPBOARD_CAP_FILES |
                 LI_CLIPBOARD_CAP_BLOB;
     }
     m_StreamConfig.disableAdaptiveInputThrottling = m_Preferences->disableAdaptiveInputThrottling;

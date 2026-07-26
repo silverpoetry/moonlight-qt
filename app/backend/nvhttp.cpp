@@ -14,6 +14,7 @@
 #include <QImageReader>
 #include <QtEndian>
 #include <QNetworkProxy>
+#include <QUrlQuery>
 
 #define FAST_FAIL_TIMEOUT_MS 2000
 #define REQUEST_TIMEOUT_MS 5000
@@ -21,9 +22,20 @@
 #define RESUME_TIMEOUT_MS 30000
 #define QUIT_TIMEOUT_MS 30000
 #define CLIPBOARD_BLOB_TIMEOUT_MS 30000
+#define CLIPBOARD_FILE_TIMEOUT_MS 60000
 
 namespace {
     constexpr int ClipboardMaxBlobBytes = 32 * 1024 * 1024;
+    constexpr int ClipboardMaxFileChunkBytes = 4 * 1024 * 1024;
+
+    bool isCanonicalUuid(const QString& id)
+    {
+        const QString normalized = id.trimmed().toLower();
+        const QUuid uuid(normalized);
+        return !uuid.isNull() &&
+                uuid.toString(QUuid::WithoutBraces)
+                    .compare(normalized, Qt::CaseInsensitive) == 0;
+    }
 }
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -525,6 +537,245 @@ NvHTTP::downloadClipboardBlob(const QString& id,
         throw std::runtime_error("Clipboard blob integrity check failed");
     }
 
+    return content;
+}
+
+NvHTTP::ClipboardBlobUploadResult
+NvHTTP::beginClipboardFileUpload(const QByteArray& manifest, quint64 originId)
+{
+    if (manifest.isEmpty() ||
+            manifest.size() > static_cast<int>(LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES) ||
+            !LiIsValidClipboardFileManifest(
+                reinterpret_cast<const uint8_t*>(manifest.constData()),
+                static_cast<size_t>(manifest.size())) ||
+            originId == 0) {
+        throw std::invalid_argument("Invalid clipboard file manifest");
+    }
+
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/files");
+    url.setQuery(QString());
+
+    QNetworkRequest request = createRequest(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader,
+                      QByteArrayLiteral("application/vnd.moonlight.file-manifest"));
+    request.setRawHeader("X-Clipboard-Origin",
+                         QString::number(static_cast<qulonglong>(originId)).toLatin1());
+    request.setRawHeader("X-Clipboard-Idempotency-Key",
+                         QUuid::createUuid().toString(QUuid::WithoutBraces).toLatin1());
+
+    QNetworkReply* reply = executeRequest(request,
+                                          &manifest,
+                                          "clipboard file manifest upload",
+                                          CLIPBOARD_FILE_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR,
+                                          64 * 1024);
+    const QByteArray response = reply->readAll();
+    delete reply;
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(response, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        throw std::runtime_error("Malformed clipboard file upload response");
+    }
+
+    const QJsonObject object = document.object();
+    const QString id = object.value("id").toString().trimmed().toLower();
+    const double sizeNumber = object.value("size").toDouble(-1);
+    const qint64 size = sizeNumber >= 0 ? static_cast<qint64>(sizeNumber) : -1;
+    const QByteArray digestHex =
+            object.value("sha256").toString().toLatin1().toLower();
+    const QByteArray digest = QByteArray::fromHex(digestHex);
+    const QByteArray expectedDigest =
+            QCryptographicHash::hash(manifest, QCryptographicHash::Sha256);
+
+    if (!isCanonicalUuid(id) ||
+            static_cast<double>(size) != sizeNumber ||
+            size != manifest.size() ||
+            digestHex.size() != 64 ||
+            digest.toHex() != digestHex ||
+            digest != expectedDigest) {
+        throw std::runtime_error("Invalid clipboard file upload response");
+    }
+
+    return {
+        id,
+        static_cast<quint32>(size),
+        digest,
+    };
+}
+
+void
+NvHTTP::uploadClipboardFileChunk(const QString& id,
+                                 quint32 fileIndex,
+                                 quint64 offset,
+                                 const QByteArray& content,
+                                 quint64 originId)
+{
+    const QString normalizedId = id.trimmed().toLower();
+    if (!isCanonicalUuid(normalizedId) ||
+            content.isEmpty() ||
+            content.size() > ClipboardMaxFileChunkBytes ||
+            originId == 0) {
+        throw std::invalid_argument("Invalid clipboard file chunk");
+    }
+
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/files/" + normalizedId +
+                "/" + QString::number(fileIndex));
+    url.setQuery(QString());
+
+    QNetworkRequest request = createRequest(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader,
+                      QByteArrayLiteral("application/octet-stream"));
+    request.setRawHeader("X-Clipboard-Origin",
+                         QString::number(static_cast<qulonglong>(originId)).toLatin1());
+    request.setRawHeader("X-Clipboard-Offset",
+                         QString::number(static_cast<qulonglong>(offset)).toLatin1());
+    request.setRawHeader(
+                "X-Clipboard-SHA256",
+                QCryptographicHash::hash(content, QCryptographicHash::Sha256).toHex());
+
+    QNetworkReply* reply = executeRequest(request,
+                                          &content,
+                                          "clipboard file chunk upload",
+                                          CLIPBOARD_FILE_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR,
+                                          64 * 1024);
+    delete reply;
+}
+
+void
+NvHTTP::completeClipboardFileUpload(const QString& id, quint64 originId)
+{
+    const QString normalizedId = id.trimmed().toLower();
+    if (!isCanonicalUuid(normalizedId) || originId == 0) {
+        throw std::invalid_argument("Invalid clipboard file completion");
+    }
+
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/files/" + normalizedId + "/complete");
+    url.setQuery(QString());
+    QNetworkRequest request = createRequest(url);
+    request.setRawHeader("X-Clipboard-Origin",
+                         QString::number(static_cast<qulonglong>(originId)).toLatin1());
+    const QByteArray emptyBody;
+    QNetworkReply* reply = executeRequest(request,
+                                          &emptyBody,
+                                          "clipboard file completion",
+                                          CLIPBOARD_FILE_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR,
+                                          64 * 1024);
+    delete reply;
+}
+
+QByteArray
+NvHTTP::downloadClipboardFileManifest(const QString& id,
+                                      quint64 requestOriginId,
+                                      quint32 expectedSize,
+                                      const QByteArray& expectedSha256)
+{
+    const QString normalizedId = id.trimmed().toLower();
+    if (!isCanonicalUuid(normalizedId) ||
+            requestOriginId == 0 ||
+            expectedSize == 0 ||
+            expectedSize > LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES ||
+            expectedSha256.size() != LI_CLIPBOARD_SHA256_BYTES) {
+        throw std::invalid_argument("Invalid clipboard file manifest download");
+    }
+
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/files/" + normalizedId + "/manifest");
+    url.setQuery(QString());
+    QNetworkRequest request = createRequest(url);
+    request.setRawHeader("X-Clipboard-Origin",
+                         QString::number(static_cast<qulonglong>(requestOriginId)).toLatin1());
+
+    QNetworkReply* reply = executeRequest(request,
+                                          nullptr,
+                                          "clipboard file manifest download",
+                                          CLIPBOARD_FILE_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR,
+                                          expectedSize);
+    const QByteArray contentType =
+            reply->rawHeader("Content-Type").split(';').value(0).trimmed().toLower();
+    const QByteArray digestHex =
+            reply->rawHeader("X-Clipboard-SHA256").trimmed().toLower();
+    const QVariant contentLength = reply->header(QNetworkRequest::ContentLengthHeader);
+    const QByteArray manifest = reply->readAll();
+    delete reply;
+
+    if (contentType != "application/vnd.moonlight.file-manifest" ||
+            digestHex.size() != 64 ||
+            QByteArray::fromHex(digestHex) != expectedSha256 ||
+            (contentLength.isValid() &&
+             contentLength.toLongLong() != static_cast<qint64>(expectedSize)) ||
+            manifest.size() != static_cast<int>(expectedSize) ||
+            QCryptographicHash::hash(manifest, QCryptographicHash::Sha256) != expectedSha256 ||
+            !LiIsValidClipboardFileManifest(
+                reinterpret_cast<const uint8_t*>(manifest.constData()),
+                static_cast<size_t>(manifest.size()))) {
+        throw std::runtime_error("Clipboard file manifest integrity check failed");
+    }
+    return manifest;
+}
+
+QByteArray
+NvHTTP::downloadClipboardFileChunk(const QString& id,
+                                   quint32 fileIndex,
+                                   quint64 offset,
+                                   quint32 length,
+                                   quint64 requestOriginId)
+{
+    const QString normalizedId = id.trimmed().toLower();
+    if (!isCanonicalUuid(normalizedId) ||
+            requestOriginId == 0 ||
+            length == 0 ||
+            length > static_cast<quint32>(ClipboardMaxFileChunkBytes)) {
+        throw std::invalid_argument("Invalid clipboard file chunk download");
+    }
+
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/files/" + normalizedId +
+                "/" + QString::number(fileIndex));
+    QUrlQuery query;
+    query.addQueryItem("offset", QString::number(static_cast<qulonglong>(offset)));
+    query.addQueryItem("length", QString::number(length));
+    url.setQuery(query);
+
+    QNetworkRequest request = createRequest(url);
+    request.setRawHeader("X-Clipboard-Origin",
+                         QString::number(static_cast<qulonglong>(requestOriginId)).toLatin1());
+    QNetworkReply* reply = executeRequest(request,
+                                          nullptr,
+                                          "clipboard file chunk download",
+                                          CLIPBOARD_FILE_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR,
+                                          length);
+    const QByteArray contentType =
+            reply->rawHeader("Content-Type").split(';').value(0).trimmed().toLower();
+    const QByteArray digestHex =
+            reply->rawHeader("X-Clipboard-SHA256").trimmed().toLower();
+    const QByteArray offsetHeader =
+            reply->rawHeader("X-Clipboard-Offset").trimmed();
+    const QVariant contentLength = reply->header(QNetworkRequest::ContentLengthHeader);
+    const QByteArray content = reply->readAll();
+    delete reply;
+
+    bool offsetOk = false;
+    const quint64 responseOffset = offsetHeader.toULongLong(&offsetOk);
+    const QByteArray digest = QByteArray::fromHex(digestHex);
+    if (contentType != "application/octet-stream" ||
+            digestHex.size() != 64 ||
+            digest.toHex() != digestHex ||
+            !offsetOk ||
+            responseOffset != offset ||
+            (contentLength.isValid() &&
+             contentLength.toLongLong() != static_cast<qint64>(length)) ||
+            content.size() != static_cast<int>(length) ||
+            QCryptographicHash::hash(content, QCryptographicHash::Sha256) != digest) {
+        throw std::runtime_error("Clipboard file chunk integrity check failed");
+    }
     return content;
 }
 

@@ -1528,6 +1528,23 @@ Flickable {
                 }
 
                 CheckBox {
+                    id: clipboardFileSyncCheck
+                    hoverEnabled: true
+                    width: parent.width
+                    text: qsTr("Sync clipboard files")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.enableClipboardFileSync
+                    onCheckedChanged: {
+                        StreamingPreferences.enableClipboardFileSync = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 10000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Synchronizes copied files and folders with Sunshine while streaming. File contents use the existing encrypted host connection.")
+                }
+
+                CheckBox {
                     id: swapMouseButtonsCheck
                     hoverEnabled: true
                     width: parent.width
