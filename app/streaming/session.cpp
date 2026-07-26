@@ -85,10 +85,8 @@ CONNECTION_LISTENER_CALLBACKS Session::k_ConnCallbacks = {
     Session::clSetControllerLED,
     Session::clSetAdaptiveTriggers,
     Session::clNativeCursor,
-    Session::clClipboardText,
-    Session::clClipboardReady,
     Session::clClipboardContent,
-    Session::clClipboardReady2
+    Session::clClipboardReady
 };
 
 Session* Session::s_ActiveSession;
@@ -1125,34 +1123,6 @@ namespace {
     };
 }
 
-void Session::clClipboardText(const uint8_t* text, uint32_t length)
-{
-    SS_CLIPBOARD_CONTENT content = {};
-    content.mimeType = LI_CLIPBOARD_MIME_TEXT_UTF8;
-    content.length = length;
-    content.data = text;
-    clClipboardContent(&content);
-}
-
-void Session::clClipboardReady()
-{
-    Session* session = s_ActiveSession;
-    if (session == nullptr ||
-            !session->m_StreamConfig.enableClipboardSync ||
-            session->m_ClipboardProtocolVersion.load() == LI_CLIPBOARD_VERSION_V2) {
-        return;
-    }
-
-    session->m_ClipboardProtocolVersion.store(LI_CLIPBOARD_VERSION_V1);
-    session->m_ClipboardHostCapabilities.store(
-                LI_CLIPBOARD_CAP_CAN_SEND |
-                LI_CLIPBOARD_CAP_CAN_RECEIVE |
-                LI_CLIPBOARD_CAP_TEXT);
-    if (!session->m_ClipboardSyncReady.exchange(true)) {
-        postClipboardReadyEvent(session->m_ClipboardTransferState);
-    }
-}
-
 void Session::clClipboardContent(PSS_CLIPBOARD_CONTENT content)
 {
     Session* session = s_ActiveSession;
@@ -1175,8 +1145,6 @@ void Session::clClipboardContent(PSS_CLIPBOARD_CONTENT content)
         LI_CLIPBOARD_BLOB_REFERENCE reference = {};
         if (!LiDecodeClipboardBlobReference(
                     content->data, content->length, &reference) ||
-                session->m_ClipboardProtocolVersion.load() !=
-                    LI_CLIPBOARD_VERSION_V2 ||
                 (hostCapabilities & LI_CLIPBOARD_CAP_BLOB) == 0 ||
                 !LiIsClipboardMimeSupported(
                     reference.targetMimeType,
@@ -1261,14 +1229,13 @@ void Session::clClipboardContent(PSS_CLIPBOARD_CONTENT content)
     }
 }
 
-void Session::clClipboardReady2(uint8_t version, uint8_t capabilities)
+void Session::clClipboardReady(uint8_t capabilities)
 {
     Session* session = s_ActiveSession;
     if (session == nullptr || !session->m_StreamConfig.enableClipboardSync) {
         return;
     }
 
-    session->m_ClipboardProtocolVersion.store(version);
     session->m_ClipboardHostCapabilities.store(capabilities);
     if (!session->m_ClipboardSyncReady.exchange(true)) {
         postClipboardReadyEvent(session->m_ClipboardTransferState);
@@ -1378,7 +1345,6 @@ void Session::completeClipboardBlobUpload(
             uploadEvent->generation !=
                 m_ClipboardTransferState->localGeneration.load() ||
             !m_ClipboardSyncReady.load() ||
-            m_ClipboardProtocolVersion.load() != LI_CLIPBOARD_VERSION_V2 ||
             (m_ClipboardHostCapabilities.load() &
                 (LI_CLIPBOARD_CAP_CAN_RECEIVE | LI_CLIPBOARD_CAP_BLOB)) !=
                 (LI_CLIPBOARD_CAP_CAN_RECEIVE | LI_CLIPBOARD_CAP_BLOB) ||
@@ -1439,10 +1405,8 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
 #endif
 
     const auto hostCapabilities = m_ClipboardHostCapabilities.load();
-    const auto protocolVersion = m_ClipboardProtocolVersion.load();
     const auto localCapabilities = m_StreamConfig.clipboardCapabilities;
-    if (protocolVersion == LI_CLIPBOARD_VERSION_V2 &&
-            (hostCapabilities &
+    if ((hostCapabilities &
                 (LI_CLIPBOARD_CAP_CAN_RECEIVE |
                  LI_CLIPBOARD_CAP_BLOB |
                  LI_CLIPBOARD_CAP_FILES |
@@ -1493,8 +1457,7 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
         }
     }
 
-    if (protocolVersion == LI_CLIPBOARD_VERSION_V2 &&
-            (hostCapabilities & LI_CLIPBOARD_CAP_CAN_RECEIVE) != 0 &&
+    if ((hostCapabilities & LI_CLIPBOARD_CAP_CAN_RECEIVE) != 0 &&
             (hostCapabilities & LI_CLIPBOARD_CAP_PNG) != 0 &&
             (localCapabilities & LI_CLIPBOARD_CAP_PNG) != 0 &&
             mimeData->hasImage()) {
@@ -1568,14 +1531,10 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
         return;
     }
 
-    const int result = protocolVersion == LI_CLIPBOARD_VERSION_V2 ?
-                LiSendClipboardContent(
-                    LI_CLIPBOARD_MIME_TEXT_UTF8,
-                    reinterpret_cast<const uint8_t*>(text.constData()),
-                    static_cast<uint32_t>(text.size())) :
-                LiSendClipboardText(
-                    reinterpret_cast<const uint8_t*>(text.constData()),
-                    static_cast<uint32_t>(text.size()));
+    const int result = LiSendClipboardContent(
+                LI_CLIPBOARD_MIME_TEXT_UTF8,
+                reinterpret_cast<const uint8_t*>(text.constData()),
+                static_cast<uint32_t>(text.size()));
     if (result != 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Failed to announce clipboard text");
@@ -1585,7 +1544,6 @@ void Session::sendCurrentClipboardContent(bool forceCurrentContent)
 void Session::deactivateClipboardSync()
 {
     m_ClipboardSyncReady.store(false);
-    m_ClipboardProtocolVersion.store(0);
     m_ClipboardHostCapabilities.store(0);
     m_ClipboardTransferState->active.store(false);
     ++m_ClipboardTransferState->localGeneration;
@@ -2164,7 +2122,6 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_AutoReconnectPending(false),
       m_SuppressTerminationErrors(false),
       m_ClipboardSyncReady(false),
-      m_ClipboardProtocolVersion(0),
       m_ClipboardHostCapabilities(0),
       m_ClipboardTransferState(std::make_shared<ClipboardTransferState>()),
       m_AsyncConnectionSuccess(false),

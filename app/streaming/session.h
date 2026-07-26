@@ -269,16 +269,10 @@ private:
     void clNativeCursor(PSS_NATIVE_CURSOR_UPDATE cursorUpdate);
 
     static
-    void clClipboardText(const uint8_t* text, uint32_t length);
-
-    static
-    void clClipboardReady();
-
-    static
     void clClipboardContent(PSS_CLIPBOARD_CONTENT content);
 
     static
-    void clClipboardReady2(uint8_t version, uint8_t capabilities);
+    void clClipboardReady(uint8_t capabilities);
 
     static
     int arInit(int audioConfiguration,
@@ -341,7 +335,6 @@ private:
     bool m_AutoReconnectPending;
     bool m_SuppressTerminationErrors;
     std::atomic_bool m_ClipboardSyncReady;
-    std::atomic_int m_ClipboardProtocolVersion;
     std::atomic_int m_ClipboardHostCapabilities;
     std::shared_ptr<ClipboardTransferState> m_ClipboardTransferState;
 
