@@ -112,9 +112,19 @@ public:
         QByteArray sha256;
     };
 
+    struct ClipboardFileOfferResult {
+        QString id;
+    };
+
+    enum class ClipboardFileRequestKind {
+        Manifest,
+        Chunk,
+    };
+
     struct ClipboardFileRequest {
         bool found;
         QString id;
+        ClipboardFileRequestKind kind;
         quint32 fileIndex;
         quint64 offset;
         quint32 length;
@@ -207,8 +217,8 @@ public:
                           quint32 expectedSize,
                           const QByteArray& expectedSha256);
 
-    ClipboardBlobUploadResult
-    registerClipboardFileSource(const QByteArray& manifest, quint64 originId);
+    ClipboardFileOfferResult
+    registerClipboardFileSource(quint64 originId);
 
     ClipboardFileRequest
     pollClipboardFileRequest(const QString& id,
@@ -218,6 +228,7 @@ public:
     void
     fulfillClipboardFileRequest(const QString& id,
                                 const QString& requestId,
+                                ClipboardFileRequestKind kind,
                                 const QByteArray& content,
                                 quint64 originId);
 
@@ -232,9 +243,7 @@ public:
 
     QByteArray
     downloadClipboardFileManifest(const QString& id,
-                                  quint64 requestOriginId,
-                                  quint32 expectedSize,
-                                  const QByteArray& expectedSha256);
+                                  quint64 requestOriginId);
 
     QByteArray
     downloadClipboardFileChunk(const QString& id,

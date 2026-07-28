@@ -543,16 +543,11 @@ NvHTTP::downloadClipboardBlob(const QString& id,
     return content;
 }
 
-NvHTTP::ClipboardBlobUploadResult
-NvHTTP::registerClipboardFileSource(const QByteArray& manifest, quint64 originId)
+NvHTTP::ClipboardFileOfferResult
+NvHTTP::registerClipboardFileSource(quint64 originId)
 {
-    if (manifest.isEmpty() ||
-            manifest.size() > static_cast<int>(LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES) ||
-            !LiIsValidClipboardFileManifest(
-                reinterpret_cast<const uint8_t*>(manifest.constData()),
-                static_cast<size_t>(manifest.size())) ||
-            originId == 0) {
-        throw std::invalid_argument("Invalid clipboard file manifest");
+    if (originId == 0) {
+        throw std::invalid_argument("Invalid clipboard file offer");
     }
 
     QUrl url(m_BaseUrlHttps);
@@ -561,14 +556,15 @@ NvHTTP::registerClipboardFileSource(const QByteArray& manifest, quint64 originId
 
     QNetworkRequest request = createRequest(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader,
-                      QByteArrayLiteral("application/vnd.moonlight.file-manifest"));
+                      QByteArrayLiteral("application/vnd.moonlight.file-offer"));
     request.setRawHeader("X-Clipboard-Origin",
                          QString::number(static_cast<qulonglong>(originId)).toLatin1());
     request.setRawHeader("X-Clipboard-Idempotency-Key",
                          QUuid::createUuid().toString(QUuid::WithoutBraces).toLatin1());
 
+    const QByteArray emptyContent;
     QNetworkReply* reply = executeRequest(request,
-                                          &manifest,
+                                          &emptyContent,
                                           "clipboard file source registration",
                                           CLIPBOARD_FILE_TIMEOUT_MS,
                                           NvLogLevel::NVLL_ERROR,
@@ -586,29 +582,12 @@ NvHTTP::registerClipboardFileSource(const QByteArray& manifest, quint64 originId
 
     const QJsonObject object = document.object();
     const QString id = object.value("id").toString().trimmed().toLower();
-    const double sizeNumber = object.value("size").toDouble(-1);
-    const qint64 size = sizeNumber >= 0 ? static_cast<qint64>(sizeNumber) : -1;
-    const QByteArray digestHex =
-            object.value("sha256").toString().toLatin1().toLower();
-    const QByteArray digest = QByteArray::fromHex(digestHex);
-    const QByteArray expectedDigest =
-            QCryptographicHash::hash(manifest, QCryptographicHash::Sha256);
-
-    if (!isCanonicalUuid(id) ||
-            static_cast<double>(size) != sizeNumber ||
-            size != manifest.size() ||
-            digestHex.size() != 64 ||
-            digest.toHex() != digestHex ||
-            digest != expectedDigest) {
+    if (!isCanonicalUuid(id)) {
         throw std::runtime_error(
                     "Invalid clipboard file source response");
     }
 
-    return {
-        id,
-        static_cast<quint32>(size),
-        digest,
-    };
+    return {id};
 }
 
 NvHTTP::ClipboardFileRequest
@@ -651,7 +630,14 @@ NvHTTP::pollClipboardFileRequest(
     }
     const QJsonValue requestValue = document.object().value("request");
     if (requestValue.isNull()) {
-        return {false, {}, 0, 0, 0};
+        return {
+            false,
+            {},
+            ClipboardFileRequestKind::Chunk,
+            0,
+            0,
+            0,
+        };
     }
     if (!requestValue.isObject()) {
         throw std::runtime_error("Invalid clipboard file request");
@@ -659,10 +645,14 @@ NvHTTP::pollClipboardFileRequest(
 
     const QJsonObject object = requestValue.toObject();
     const QString requestId = object.value("id").toString().trimmed().toLower();
+    const QString type = object.value("type").toString().trimmed().toLower();
     const double fileIndexNumber = object.value("file_index").toDouble(-1);
     const double offsetNumber = object.value("offset").toDouble(-1);
     const double lengthNumber = object.value("length").toDouble(-1);
+    const bool manifestRequest = type == QStringLiteral("manifest");
+    const bool chunkRequest = type == QStringLiteral("chunk");
     if (!isCanonicalUuid(requestId) ||
+            (!manifestRequest && !chunkRequest) ||
             fileIndexNumber < 0 ||
             fileIndexNumber > std::numeric_limits<quint32>::max() ||
             static_cast<double>(static_cast<quint32>(fileIndexNumber)) !=
@@ -672,15 +662,23 @@ NvHTTP::pollClipboardFileRequest(
                 std::numeric_limits<quint64>::max()) ||
             static_cast<double>(static_cast<quint64>(offsetNumber)) !=
                 offsetNumber ||
-            lengthNumber <= 0 ||
+            lengthNumber < 0 ||
             lengthNumber > ClipboardMaxFileChunkBytes ||
             static_cast<double>(static_cast<quint32>(lengthNumber)) !=
-                lengthNumber) {
+                lengthNumber ||
+            (manifestRequest &&
+             (fileIndexNumber != 0 ||
+              offsetNumber != 0 ||
+              lengthNumber != 0)) ||
+            (chunkRequest && lengthNumber == 0)) {
         throw std::runtime_error("Invalid clipboard file request fields");
     }
     return {
         true,
         requestId,
+        manifestRequest ?
+            ClipboardFileRequestKind::Manifest :
+            ClipboardFileRequestKind::Chunk,
         static_cast<quint32>(fileIndexNumber),
         static_cast<quint64>(offsetNumber),
         static_cast<quint32>(lengthNumber),
@@ -690,6 +688,7 @@ NvHTTP::pollClipboardFileRequest(
 void
 NvHTTP::fulfillClipboardFileRequest(const QString& id,
                                     const QString& requestId,
+                                    ClipboardFileRequestKind kind,
                                     const QByteArray& content,
                                     quint64 originId)
 {
@@ -699,6 +698,14 @@ NvHTTP::fulfillClipboardFileRequest(const QString& id,
             !isCanonicalUuid(normalizedRequestId) ||
             content.isEmpty() ||
             content.size() > ClipboardMaxFileChunkBytes ||
+            (kind == ClipboardFileRequestKind::Manifest &&
+             (content.size() >
+                  static_cast<int>(
+                      LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES) ||
+              !LiIsValidClipboardFileManifest(
+                  reinterpret_cast<const uint8_t*>(
+                      content.constData()),
+                  static_cast<size_t>(content.size())))) ||
             originId == 0) {
         throw std::invalid_argument("Invalid clipboard file response");
     }
@@ -708,7 +715,10 @@ NvHTTP::fulfillClipboardFileRequest(const QString& id,
     url.setQuery(QString());
     QNetworkRequest request = createRequest(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader,
-                      QByteArrayLiteral("application/octet-stream"));
+                      kind == ClipboardFileRequestKind::Manifest ?
+                          QByteArrayLiteral(
+                              "application/vnd.moonlight.file-manifest") :
+                          QByteArrayLiteral("application/octet-stream"));
     request.setRawHeader("X-Clipboard-Origin",
                          QString::number(static_cast<qulonglong>(originId)).toLatin1());
     request.setRawHeader(
@@ -796,16 +806,11 @@ NvHTTP::releaseClipboardFileSource(const QString& id,
 
 QByteArray
 NvHTTP::downloadClipboardFileManifest(const QString& id,
-                                      quint64 requestOriginId,
-                                      quint32 expectedSize,
-                                      const QByteArray& expectedSha256)
+                                      quint64 requestOriginId)
 {
     const QString normalizedId = id.trimmed().toLower();
     if (!isCanonicalUuid(normalizedId) ||
-            requestOriginId == 0 ||
-            expectedSize == 0 ||
-            expectedSize > LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES ||
-            expectedSha256.size() != LI_CLIPBOARD_SHA256_BYTES) {
+            requestOriginId == 0) {
         throw std::invalid_argument("Invalid clipboard file manifest download");
     }
 
@@ -821,7 +826,7 @@ NvHTTP::downloadClipboardFileManifest(const QString& id,
                                           "clipboard file manifest download",
                                           CLIPBOARD_FILE_TIMEOUT_MS,
                                           NvLogLevel::NVLL_ERROR,
-                                          expectedSize);
+                                          LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES);
     const QByteArray contentType =
             reply->rawHeader("Content-Type").split(';').value(0).trimmed().toLower();
     const QByteArray digestHex =
@@ -830,13 +835,19 @@ NvHTTP::downloadClipboardFileManifest(const QString& id,
     const QByteArray manifest = reply->readAll();
     delete reply;
 
+    const QByteArray digest = QByteArray::fromHex(digestHex);
     if (contentType != "application/vnd.moonlight.file-manifest" ||
             digestHex.size() != 64 ||
-            QByteArray::fromHex(digestHex) != expectedSha256 ||
             (contentLength.isValid() &&
-             contentLength.toLongLong() != static_cast<qint64>(expectedSize)) ||
-            manifest.size() != static_cast<int>(expectedSize) ||
-            QCryptographicHash::hash(manifest, QCryptographicHash::Sha256) != expectedSha256 ||
+             contentLength.toLongLong() != manifest.size()) ||
+            manifest.isEmpty() ||
+            manifest.size() >
+                static_cast<int>(LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES) ||
+            digest.size() != LI_CLIPBOARD_SHA256_BYTES ||
+            digest.toHex() != digestHex ||
+            QCryptographicHash::hash(
+                manifest,
+                QCryptographicHash::Sha256) != digest ||
             !LiIsValidClipboardFileManifest(
                 reinterpret_cast<const uint8_t*>(manifest.constData()),
                 static_cast<size_t>(manifest.size()))) {

@@ -18,7 +18,7 @@
 
 struct ClipboardEvent;
 struct ClipboardBlobUploadEvent;
-struct ClipboardFileManifestEvent;
+struct ClipboardFileOfferEvent;
 struct ClipboardStatusEvent;
 struct ClipboardTransferState;
 
@@ -303,11 +303,10 @@ private:
     void applyNativeCursor(const NativeCursorEvent* cursorEvent);
     void applyRemoteClipboardContent(const ClipboardEvent* clipboardEvent);
     void completeClipboardBlobUpload(const ClipboardBlobUploadEvent* uploadEvent);
-    void completeClipboardFileManifest(
-            ClipboardFileManifestEvent* manifestEvent);
+    void completeClipboardFileOffer(
+            const ClipboardFileOfferEvent* offerEvent);
     void completeClipboardStatus(const ClipboardStatusEvent* statusEvent);
-    void sendCurrentClipboardContent(bool initialSync = false,
-                                     bool forceFilePublish = false);
+    void sendCurrentClipboardContent(bool initialSync = false);
     bool handleFileClipboardPasteKey(const SDL_KeyboardEvent* event);
     void sendDeferredFilePaste();
     void resetFileClipboardPublication();
@@ -351,7 +350,6 @@ private:
     std::shared_ptr<ClipboardTransferState> m_ClipboardTransferState;
     enum class FileClipboardPublishState : quint8 {
         Idle,
-        Scanning,
         Publishing,
         AwaitingAcknowledgement,
         Ready,

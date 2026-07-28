@@ -10,7 +10,6 @@
 #include <cstring>
 #include <condition_variable>
 #include <deque>
-#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -499,12 +498,12 @@ namespace ClipboardVirtualFiles {
                 public IDataObjectAsyncCapability
         {
         public:
-            VirtualFileDataObject(QVector<FileEntry> entries,
-                                  QByteArray markerData,
+            VirtualFileDataObject(QByteArray markerData,
+                                  ManifestCallback manifestCallback,
                                   ReadCallback readCallback,
                                   UINT markerFormat)
-                : m_Entries(std::move(entries)),
-                  m_MarkerData(std::move(markerData)),
+                : m_MarkerData(std::move(markerData)),
+                  m_ManifestCallback(std::move(manifestCallback)),
                   m_ReadCallback(std::move(readCallback)),
                   m_DescriptorFormat(
                       RegisterClipboardFormatW(L"FileGroupDescriptorW")),
@@ -518,8 +517,8 @@ namespace ClipboardVirtualFiles {
 
             bool isValid() const
             {
-                return !m_Entries.isEmpty() &&
-                        !m_MarkerData.isEmpty() &&
+                return !m_MarkerData.isEmpty() &&
+                        m_ManifestCallback &&
                         m_ReadCallback &&
                         m_DescriptorFormat != 0 &&
                         m_ContentsFormat != 0 &&
@@ -575,10 +574,22 @@ namespace ClipboardVirtualFiles {
                 }
 
                 if (format->cfFormat == m_DescriptorFormat) {
+                    if (!ensureManifest()) {
+                        return STG_E_READFAULT;
+                    }
                     return getDescriptors(*medium);
                 }
                 if (format->cfFormat == m_ContentsFormat) {
+                    if (!ensureManifest()) {
+                        return STG_E_READFAULT;
+                    }
                     const int index = format->lindex;
+                    if (index < 0 ||
+                            index >= m_Entries.size() ||
+                            m_Entries.at(index).type !=
+                                LI_CLIPBOARD_FILE_TYPE_REGULAR) {
+                        return DV_E_LINDEX;
+                    }
                     const FileEntry& entry = m_Entries.at(index);
                     auto* stream = new (std::nothrow) VirtualFileStream(
                                 static_cast<quint32>(index),
@@ -632,10 +643,7 @@ namespace ClipboardVirtualFiles {
                     if ((format->tymed & TYMED_ISTREAM) == 0) {
                         return DV_E_TYMED;
                     }
-                    if (format->lindex < 0 ||
-                            format->lindex >= m_Entries.size() ||
-                            m_Entries.at(format->lindex).type !=
-                                LI_CLIPBOARD_FILE_TYPE_REGULAR) {
+                    if (format->lindex < 0) {
                         return DV_E_LINDEX;
                     }
                     return S_OK;
@@ -768,6 +776,43 @@ namespace ClipboardVirtualFiles {
             }
 
         private:
+            bool ensureManifest()
+            {
+                {
+                    std::unique_lock<std::mutex> lock(m_ManifestMutex);
+                    if (m_ManifestState == ManifestState::Ready) {
+                        return true;
+                    }
+                    if (m_ManifestState == ManifestState::Failed) {
+                        return false;
+                    }
+                    if (m_ManifestState == ManifestState::Loading) {
+                        m_ManifestReady.wait(lock, [this]() {
+                            return m_ManifestState !=
+                                    ManifestState::Loading;
+                        });
+                        return m_ManifestState == ManifestState::Ready;
+                    }
+                    m_ManifestState = ManifestState::Loading;
+                }
+
+                QVector<FileEntry> entries;
+                const QByteArray manifest = m_ManifestCallback();
+                const bool valid = decodeManifest(manifest, entries);
+                {
+                    std::lock_guard<std::mutex> lock(m_ManifestMutex);
+                    if (valid) {
+                        m_Entries = std::move(entries);
+                        m_ManifestState = ManifestState::Ready;
+                    }
+                    else {
+                        m_ManifestState = ManifestState::Failed;
+                    }
+                }
+                m_ManifestReady.notify_all();
+                return valid;
+            }
+
             HRESULT getDescriptors(STGMEDIUM& medium) const
             {
                 const size_t size =
@@ -825,10 +870,21 @@ namespace ClipboardVirtualFiles {
                 return S_OK;
             }
 
+            enum class ManifestState {
+                Empty,
+                Loading,
+                Ready,
+                Failed,
+            };
+
             std::atomic_ulong m_References {1};
             QVector<FileEntry> m_Entries;
             QByteArray m_MarkerData;
+            ManifestCallback m_ManifestCallback;
             ReadCallback m_ReadCallback;
+            std::mutex m_ManifestMutex;
+            std::condition_variable m_ManifestReady;
+            ManifestState m_ManifestState {ManifestState::Empty};
             UINT m_DescriptorFormat;
             UINT m_ContentsFormat;
             UINT m_PreferredDropEffectFormat;
@@ -881,8 +937,6 @@ namespace ClipboardVirtualFiles {
 
                 const auto job = std::make_shared<Job>();
                 job->object = object;
-                std::future<HRESULT> result =
-                        job->result.get_future();
                 {
                     std::lock_guard<std::mutex> lock(m_Mutex);
                     m_Jobs.push_back(job);
@@ -892,14 +946,13 @@ namespace ClipboardVirtualFiles {
                         return false;
                     }
                 }
-                return SUCCEEDED(result.get());
+                return true;
             }
 
         private:
             struct Job
             {
                 IDataObject* object {nullptr};
-                std::promise<HRESULT> result;
             };
 
             void run()
@@ -941,10 +994,8 @@ namespace ClipboardVirtualFiles {
                             ResetEvent(m_WakeEvent);
                         }
                         for (const auto& job : jobs) {
-                            const HRESULT result =
-                                    OleSetClipboard(job->object);
+                            OleSetClipboard(job->object);
                             job->object->Release();
-                            job->result.set_value(result);
                         }
                         if (stopping) {
                             break;
@@ -986,26 +1037,25 @@ namespace ClipboardVirtualFiles {
         }
     }
 
-    bool setRemoteFiles(const QByteArray& manifest,
-                        const QByteArray& markerMime,
+    bool setRemoteFiles(const QByteArray& markerMime,
                         const QByteArray& markerData,
+                        ManifestCallback manifestCallback,
                         ReadCallback readCallback)
     {
-        QVector<FileEntry> entries;
         const QString markerName = QString::fromLatin1(markerMime);
         const UINT markerFormat =
                 RegisterClipboardFormatW(
                     reinterpret_cast<LPCWSTR>(markerName.utf16()));
         if (markerFormat == 0 ||
                 markerData.isEmpty() ||
-                !readCallback ||
-                !decodeManifest(manifest, entries)) {
+                !manifestCallback ||
+                !readCallback) {
             return false;
         }
 
         auto* object = new (std::nothrow) VirtualFileDataObject(
-                    std::move(entries),
                     markerData,
+                    std::move(manifestCallback),
                     std::move(readCallback),
                     markerFormat);
         if (object == nullptr) {
