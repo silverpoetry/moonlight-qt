@@ -993,23 +993,13 @@
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1500"/>
-        <source>Sync clipboard text</source>
-        <translation>同步剪贴板文本</translation>
+        <source>Sync clipboard</source>
+        <translation>同步剪贴板</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1510"/>
-        <source>Synchronizes UTF-8 text clipboard contents with Sunshine while streaming.</source>
-        <translation>串流时与 Sunshine 同步 UTF-8 文本剪贴板内容。</translation>
-    </message>
-    <message>
-        <location filename="../gui/SettingsView.qml" line="1517"/>
-        <source>Sync clipboard images</source>
-        <translation>同步剪贴板图片</translation>
-    </message>
-    <message>
-        <location filename="../gui/SettingsView.qml" line="1527"/>
-        <source>Synchronizes PNG images with Sunshine while streaming. Large images use the existing encrypted host connection.</source>
-        <translation>串流时与 Sunshine 同步 PNG 图片；大图片复用现有的加密主机连接传输。</translation>
+        <source>Synchronizes text, images, files, and folders with Sunshine while streaming.</source>
+        <translation>串流时与 Sunshine 同步文字、图片、文件和文件夹。</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1872"/>

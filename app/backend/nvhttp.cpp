@@ -572,7 +572,8 @@ NvHTTP::registerClipboardFileSource(const QByteArray& manifest, quint64 originId
                                           "clipboard file source registration",
                                           CLIPBOARD_FILE_TIMEOUT_MS,
                                           NvLogLevel::NVLL_ERROR,
-                                          64 * 1024);
+                                          64 * 1024,
+                                          true);
     const QByteArray response = reply->readAll();
     delete reply;
 
@@ -611,7 +612,10 @@ NvHTTP::registerClipboardFileSource(const QByteArray& manifest, quint64 originId
 }
 
 NvHTTP::ClipboardFileRequest
-NvHTTP::pollClipboardFileRequest(const QString& id, quint64 originId)
+NvHTTP::pollClipboardFileRequest(
+        const QString& id,
+        quint64 originId,
+        const std::function<bool()>& cancelRequested)
 {
     const QString normalizedId = id.trimmed().toLower();
     if (!isCanonicalUuid(normalizedId) || originId == 0) {
@@ -634,7 +638,9 @@ NvHTTP::pollClipboardFileRequest(const QString& id, quint64 originId)
                                           "clipboard file request poll",
                                           30 * 1000,
                                           NvLogLevel::NVLL_ERROR,
-                                          64 * 1024);
+                                          64 * 1024,
+                                          true,
+                                          cancelRequested);
     const QByteArray response = reply->readAll();
     delete reply;
 
@@ -713,7 +719,8 @@ NvHTTP::fulfillClipboardFileRequest(const QString& id,
                                           "clipboard file response",
                                           CLIPBOARD_FILE_TIMEOUT_MS,
                                           NvLogLevel::NVLL_ERROR,
-                                          64 * 1024);
+                                          64 * 1024,
+                                          true);
     delete reply;
 }
 
@@ -750,7 +757,40 @@ NvHTTP::rejectClipboardFileRequest(const QString& id,
                 "clipboard file rejection",
                 CLIPBOARD_FILE_TIMEOUT_MS,
                 NvLogLevel::NVLL_ERROR,
-                64 * 1024);
+                64 * 1024,
+                true);
+    delete reply;
+}
+
+void
+NvHTTP::releaseClipboardFileSource(const QString& id,
+                                   quint64 originId)
+{
+    const QString normalizedId = id.trimmed().toLower();
+    if (!isCanonicalUuid(normalizedId) || originId == 0) {
+        throw std::invalid_argument(
+                    "Invalid clipboard file source release");
+    }
+
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/api/v2/clipboard/files/" + normalizedId +
+                "/release");
+    url.setQuery(QString());
+    QNetworkRequest request = createRequest(url);
+    request.setRawHeader(
+                "X-Clipboard-Origin",
+                QString::number(
+                    static_cast<qulonglong>(originId)).toLatin1());
+
+    const QByteArray emptyContent;
+    QNetworkReply* reply = executeRequest(
+                request,
+                &emptyContent,
+                "clipboard file source release",
+                REQUEST_TIMEOUT_MS,
+                NvLogLevel::NVLL_ERROR,
+                64 * 1024,
+                true);
     delete reply;
 }
 
@@ -942,9 +982,19 @@ NvHTTP::executeRequest(QNetworkRequest request,
                        QString command,
                        int timeoutMs,
                        NvLogLevel logLevel,
-                       qint64 maximumResponseBytes)
+                       qint64 maximumResponseBytes,
+                       bool reuseConnection,
+                       const std::function<bool()>& cancelRequested)
 {
     const QUrl url = request.url();
+    if (reuseConnection) {
+        request.setRawHeader("Connection", "keep-alive");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 3, 0)
+        request.setAttribute(
+                    QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute,
+                    60);
+#endif
+    }
     auto sslErrorsConnection =
             connect(m_Nam, &QNetworkAccessManager::sslErrors,
                     this, &NvHTTP::handleSslErrors);
@@ -966,6 +1016,19 @@ NvHTTP::executeRequest(QNetworkRequest request,
     connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
             &loop, &QEventLoop::quit);
+    bool canceledByCaller = false;
+    QTimer cancelTimer;
+    if (cancelRequested) {
+        cancelTimer.setInterval(50);
+        connect(&cancelTimer, &QTimer::timeout, &loop,
+                [&canceledByCaller, &cancelRequested, reply]() {
+            if (cancelRequested()) {
+                canceledByCaller = true;
+                reply->abort();
+            }
+        });
+        cancelTimer.start();
+    }
     if (timeoutMs) {
         QTimer::singleShot(timeoutMs, &loop, &QEventLoop::quit);
     }
@@ -982,7 +1045,9 @@ NvHTTP::executeRequest(QNetworkRequest request,
     }
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 3, 0)
-    m_Nam->clearAccessCache();
+    if (!reuseConnection) {
+        m_Nam->clearAccessCache();
+    }
 #endif
     disconnect(sslErrorsConnection);
 
@@ -992,10 +1057,14 @@ NvHTTP::executeRequest(QNetworkRequest request,
     }
 
     if (reply->error() != QNetworkReply::NoError) {
-        if (logLevel >= NvLogLevel::NVLL_ERROR) {
+        if (!canceledByCaller && logLevel >= NvLogLevel::NVLL_ERROR) {
             qWarning() << command << "request failed with error:" << reply->error();
         }
 
+        if (canceledByCaller) {
+            delete reply;
+            throw std::runtime_error("Request canceled");
+        }
         if (reply->error() == QNetworkReply::SslHandshakeFailedError) {
             GfeHttpResponseException exception(401, "Server certificate mismatch");
             delete reply;

@@ -18,6 +18,8 @@
 
 struct ClipboardEvent;
 struct ClipboardBlobUploadEvent;
+struct ClipboardFileManifestEvent;
+struct ClipboardStatusEvent;
 struct ClipboardTransferState;
 
 class SupportedVideoFormatList : public QList<int>
@@ -275,6 +277,9 @@ private:
     void clClipboardReady(uint8_t capabilities);
 
     static
+    void clClipboardStatus(PSS_CLIPBOARD_STATUS status);
+
+    static
     int arInit(int audioConfiguration,
                const POPUS_MULTISTREAM_CONFIGURATION opusConfig,
                void* arContext, int arFlags);
@@ -298,7 +303,14 @@ private:
     void applyNativeCursor(const NativeCursorEvent* cursorEvent);
     void applyRemoteClipboardContent(const ClipboardEvent* clipboardEvent);
     void completeClipboardBlobUpload(const ClipboardBlobUploadEvent* uploadEvent);
-    void sendCurrentClipboardContent(bool initialSync = false);
+    void completeClipboardFileManifest(
+            ClipboardFileManifestEvent* manifestEvent);
+    void completeClipboardStatus(const ClipboardStatusEvent* statusEvent);
+    void sendCurrentClipboardContent(bool initialSync = false,
+                                     bool forceFilePublish = false);
+    bool handleFileClipboardPasteKey(const SDL_KeyboardEvent* event);
+    void sendDeferredFilePaste();
+    void resetFileClipboardPublication();
     void deactivateClipboardSync();
 
     StreamingPreferences* m_Preferences;
@@ -337,6 +349,24 @@ private:
     std::atomic_bool m_ClipboardSyncReady;
     std::atomic_int m_ClipboardHostCapabilities;
     std::shared_ptr<ClipboardTransferState> m_ClipboardTransferState;
+    enum class FileClipboardPublishState : quint8 {
+        Idle,
+        Scanning,
+        Publishing,
+        AwaitingAcknowledgement,
+        Ready,
+    };
+    FileClipboardPublishState m_FileClipboardPublishState {
+        FileClipboardPublishState::Idle
+    };
+    quint32 m_FileClipboardSequence {0};
+    quint64 m_FileClipboardItemId {0};
+    quint64 m_FileClipboardGeneration {0};
+    quint64 m_DeferredFilePasteToken {0};
+    qint64 m_FileClipboardTraceStartedMs {0};
+    QByteArray m_FileClipboardContentKey;
+    bool m_DeferredFilePasteRequested {false};
+    bool m_SuppressFilePasteKey {false};
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;

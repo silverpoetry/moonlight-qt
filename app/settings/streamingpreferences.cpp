@@ -210,12 +210,10 @@ void StreamingPreferences::reload()
     absoluteTouchMode = settings.value(SER_ABSTOUCHMODE, true).toBool();
     enableTouchpadGestures = settings.value(SER_ENABLETOUCHPADGESTURES, false).toBool();
     disableAdaptiveInputThrottling = settings.value(SER_DISABLEADAPTIVEINPUTTHROTTLING, true).toBool();
-    enableClipboardSync = settings.value(SER_ENABLECLIPBOARDSYNC, false).toBool();
-    enableClipboardImageSync = settings.value(
-                SER_ENABLECLIPBOARDIMAGESYNC,
-                settings.contains(SER_ENABLECLIPBOARDSYNC) &&
-                    enableClipboardSync).toBool();
-    enableClipboardFileSync = settings.value(SER_ENABLECLIPBOARDFILESYNC, false).toBool();
+    enableClipboardSync =
+            settings.value(SER_ENABLECLIPBOARDSYNC, false).toBool() ||
+            settings.value(SER_ENABLECLIPBOARDIMAGESYNC, false).toBool() ||
+            settings.value(SER_ENABLECLIPBOARDFILESYNC, false).toBool();
     framePacing = settings.value(SER_FRAMEPACING, false).toBool();
     connectionWarnings = settings.value(SER_CONNWARNINGS, true).toBool();
     configurationWarnings = settings.value(SER_CONFWARNINGS, true).toBool();
@@ -420,8 +418,8 @@ void StreamingPreferences::save()
     settings.setValue(SER_ENABLETOUCHPADGESTURES, enableTouchpadGestures);
     settings.setValue(SER_DISABLEADAPTIVEINPUTTHROTTLING, disableAdaptiveInputThrottling);
     settings.setValue(SER_ENABLECLIPBOARDSYNC, enableClipboardSync);
-    settings.setValue(SER_ENABLECLIPBOARDIMAGESYNC, enableClipboardImageSync);
-    settings.setValue(SER_ENABLECLIPBOARDFILESYNC, enableClipboardFileSync);
+    settings.remove(SER_ENABLECLIPBOARDIMAGESYNC);
+    settings.remove(SER_ENABLECLIPBOARDFILESYNC);
     settings.setValue(SER_FRAMEPACING, framePacing);
     settings.setValue(SER_CONNWARNINGS, connectionWarnings);
     settings.setValue(SER_CONFWARNINGS, configurationWarnings);

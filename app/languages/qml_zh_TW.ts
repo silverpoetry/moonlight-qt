@@ -904,23 +904,13 @@
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1500"/>
-        <source>Sync clipboard text</source>
-        <translation>同步剪貼簿文字</translation>
+        <source>Sync clipboard</source>
+        <translation>同步剪貼簿</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1510"/>
-        <source>Synchronizes UTF-8 text clipboard contents with Sunshine while streaming.</source>
-        <translation>串流時與 Sunshine 同步 UTF-8 文字剪貼簿內容。</translation>
-    </message>
-    <message>
-        <location filename="../gui/SettingsView.qml" line="1517"/>
-        <source>Sync clipboard images</source>
-        <translation>同步剪貼簿圖片</translation>
-    </message>
-    <message>
-        <location filename="../gui/SettingsView.qml" line="1527"/>
-        <source>Synchronizes PNG images with Sunshine while streaming. Large images use the existing encrypted host connection.</source>
-        <translation>串流時與 Sunshine 同步 PNG 圖片；大型圖片會使用現有的加密主機連線傳輸。</translation>
+        <source>Synchronizes text, images, files, and folders with Sunshine while streaming.</source>
+        <translation>串流時與 Sunshine 同步文字、圖片、檔案和資料夾。</translation>
     </message>
     <message>
         <location filename="../gui/SettingsView.qml" line="1872"/>

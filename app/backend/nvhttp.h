@@ -11,6 +11,8 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 
+#include <functional>
+
 class NvComputer;
 
 class NvDisplayMode
@@ -210,7 +212,8 @@ public:
 
     ClipboardFileRequest
     pollClipboardFileRequest(const QString& id,
-                             quint64 originId);
+                             quint64 originId,
+                             const std::function<bool()>& cancelRequested = {});
 
     void
     fulfillClipboardFileRequest(const QString& id,
@@ -221,6 +224,10 @@ public:
     void
     rejectClipboardFileRequest(const QString& id,
                                const QString& requestId,
+                               quint64 originId);
+
+    void
+    releaseClipboardFileSource(const QString& id,
                                quint64 originId);
 
     QByteArray
@@ -252,7 +259,9 @@ private:
                    QString command,
                    int timeoutMs,
                    NvLogLevel logLevel,
-                   qint64 maximumResponseBytes = 0);
+                   qint64 maximumResponseBytes = 0,
+                   bool reuseConnection = false,
+                   const std::function<bool()>& cancelRequested = {});
 
     void
     handleSslErrors(QNetworkReply* reply, const QList<QSslError>& errors);

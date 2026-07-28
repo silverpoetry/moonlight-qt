@@ -1497,7 +1497,7 @@ Flickable {
                     id: clipboardSyncCheck
                     hoverEnabled: true
                     width: parent.width
-                    text: qsTr("Sync clipboard text")
+                    text: qsTr("Sync clipboard")
                     font.pointSize: 12
                     checked: StreamingPreferences.enableClipboardSync
                     onCheckedChanged: {
@@ -1507,41 +1507,7 @@ Flickable {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 10000
                     ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Synchronizes UTF-8 text clipboard contents with Sunshine while streaming.")
-                }
-
-                CheckBox {
-                    id: clipboardImageSyncCheck
-                    hoverEnabled: true
-                    width: parent.width
-                    text: qsTr("Sync clipboard images")
-                    font.pointSize: 12
-                    checked: StreamingPreferences.enableClipboardImageSync
-                    onCheckedChanged: {
-                        StreamingPreferences.enableClipboardImageSync = checked
-                    }
-
-                    ToolTip.delay: 1000
-                    ToolTip.timeout: 10000
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Synchronizes PNG images with Sunshine while streaming. Large images use the existing encrypted host connection.")
-                }
-
-                CheckBox {
-                    id: clipboardFileSyncCheck
-                    hoverEnabled: true
-                    width: parent.width
-                    text: qsTr("Sync clipboard files")
-                    font.pointSize: 12
-                    checked: StreamingPreferences.enableClipboardFileSync
-                    onCheckedChanged: {
-                        StreamingPreferences.enableClipboardFileSync = checked
-                    }
-
-                    ToolTip.delay: 1000
-                    ToolTip.timeout: 10000
-                    ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Synchronizes copied files and folders with Sunshine while streaming. File contents use the existing encrypted host connection.")
+                    ToolTip.text: qsTr("Synchronizes text, images, files, and folders with Sunshine while streaming.")
                 }
 
                 CheckBox {
