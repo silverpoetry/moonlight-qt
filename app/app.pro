@@ -199,6 +199,7 @@ SOURCES += \
     streaming/input/windowstouchpadglobal.cpp \
     streaming/input/windowstouchpad.cpp \
     streaming/session.cpp \
+    streaming/clipboardfilemanifest.cpp \
     streaming/audio/audio.cpp \
     streaming/audio/audiodeviceprewarmer.cpp \
     streaming/audio/sdlaudioutil.cpp \
@@ -238,6 +239,7 @@ HEADERS += \
     settings/streamingpreferences.h \
     streaming/input/input.h \
     streaming/session.h \
+    streaming/clipboardfilemanifest.h \
     streaming/audio/audiodeviceprewarmer.h \
     streaming/audio/sdlaudioutil.h \
     streaming/audio/renderers/renderer.h \

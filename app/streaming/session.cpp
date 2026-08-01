@@ -1,4 +1,5 @@
 #include "session.h"
+#include "clipboardfilemanifest.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
@@ -64,11 +65,8 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QSettings>
-#include <QDir>
-#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
-#include <QSet>
 #include <QTimer>
 #include <QUrl>
 
@@ -483,15 +481,6 @@ struct ClipboardFileOfferEvent
     std::shared_ptr<ClipboardTransferState> transferState;
 };
 
-struct ClipboardFileEntry
-{
-    quint8 type;
-    QString relativePath;
-    QString localPath;
-    quint64 size;
-    quint64 modifiedTimeMs;
-};
-
 namespace {
     constexpr auto ClipboardMarkerMime = "application/x-moonlight-clipboard-v2";
     constexpr auto ClipboardLastHandledContentKey =
@@ -592,191 +581,6 @@ namespace {
         event.user.code = code;
         event.user.data1 = data;
         return SDL_PushEvent(&event) >= 0;
-    }
-
-    bool appendClipboardFileEntry(const QString& localPath,
-                                  const QString& relativePath,
-                                  int depth,
-                                  QVector<ClipboardFileEntry>& entries,
-                                  quint64& totalFileBytes,
-                                  quint32& fileCount,
-                                  const std::function<bool()>& isCurrent)
-    {
-        if (!isCurrent() ||
-                depth > 128 ||
-                entries.size() >= static_cast<int>(LI_CLIPBOARD_MAX_FILE_ENTRIES)) {
-            return false;
-        }
-
-        const QFileInfo info(localPath);
-        if (!info.exists() ||
-                info.isSymLink() ||
-                (!info.isFile() && !info.isDir())) {
-            return false;
-        }
-
-        const QByteArray path = relativePath.toUtf8();
-        ClipboardFileEntry entry {
-            static_cast<quint8>(
-                info.isDir() ?
-                    LI_CLIPBOARD_FILE_TYPE_DIRECTORY :
-                    LI_CLIPBOARD_FILE_TYPE_REGULAR),
-            relativePath,
-            info.absoluteFilePath(),
-            info.isFile() ? static_cast<quint64>(info.size()) : 0,
-            info.lastModified().isValid() ?
-                static_cast<quint64>(qMax<qint64>(
-                    0, info.lastModified().toMSecsSinceEpoch())) :
-                0,
-        };
-        LI_CLIPBOARD_FILE_MANIFEST_ENTRY protocolEntry {
-            entry.type,
-            static_cast<quint32>(path.size()),
-            entry.size,
-            entry.modifiedTimeMs,
-            reinterpret_cast<const uint8_t*>(path.constData()),
-        };
-        QByteArray validationBuffer(
-                    LI_CLIPBOARD_FILE_MANIFEST_ENTRY_HEADER_SIZE + path.size(),
-                    Qt::Uninitialized);
-        size_t encodedLength = 0;
-        if (!LiEncodeClipboardFileManifestEntry(
-                    reinterpret_cast<uint8_t*>(validationBuffer.data()),
-                    static_cast<size_t>(validationBuffer.size()),
-                    &protocolEntry,
-                    &encodedLength)) {
-            return false;
-        }
-
-        if (entry.type == LI_CLIPBOARD_FILE_TYPE_REGULAR) {
-            if (entry.size > LI_CLIPBOARD_MAX_FILE_BYTES ||
-                    totalFileBytes >
-                        LI_CLIPBOARD_MAX_FILE_TRANSFER_BYTES - entry.size) {
-                return false;
-            }
-            totalFileBytes += entry.size;
-            fileCount++;
-        }
-        entries.append(std::move(entry));
-
-        if (!info.isDir()) {
-            return true;
-        }
-
-        QDirIterator children(
-                    info.absoluteFilePath(),
-                    QDir::AllEntries |
-                    QDir::Hidden |
-                    QDir::System |
-                    QDir::NoDotAndDotDot,
-                    QDirIterator::NoIteratorFlags);
-        while (children.hasNext()) {
-            children.next();
-            const QFileInfo child = children.fileInfo();
-            if (!appendClipboardFileEntry(
-                        child.absoluteFilePath(),
-                        relativePath + "/" + child.fileName(),
-                        depth + 1,
-                        entries,
-                        totalFileBytes,
-                        fileCount,
-                        isCurrent)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    bool buildClipboardFileManifest(const QList<QUrl>& urls,
-                                    QVector<ClipboardFileEntry>& entries,
-                                    QByteArray& manifest,
-                                    const std::function<bool()>& isCurrent)
-    {
-        if (urls.isEmpty() || !isCurrent()) {
-            return false;
-        }
-
-        QSet<QString> topLevelNames;
-        quint64 totalFileBytes = 0;
-        quint32 fileCount = 0;
-        for (const QUrl& url : urls) {
-            if (!url.isLocalFile()) {
-                return false;
-            }
-
-            const QFileInfo info(url.toLocalFile());
-            const QString name = info.fileName();
-            const QString foldedName = name.toCaseFolded();
-            if (name.isEmpty() || topLevelNames.contains(foldedName)) {
-                return false;
-            }
-            topLevelNames.insert(foldedName);
-            if (!appendClipboardFileEntry(
-                        info.absoluteFilePath(),
-                        name,
-                        0,
-                        entries,
-                        totalFileBytes,
-                        fileCount,
-                        isCurrent)) {
-                return false;
-            }
-        }
-
-        if (!isCurrent()) {
-            return false;
-        }
-        qsizetype manifestSize = LI_CLIPBOARD_FILE_MANIFEST_HEADER_SIZE;
-        for (const ClipboardFileEntry& entry : entries) {
-            manifestSize += LI_CLIPBOARD_FILE_MANIFEST_ENTRY_HEADER_SIZE +
-                    entry.relativePath.toUtf8().size();
-        }
-        if (entries.isEmpty() ||
-                manifestSize > static_cast<qsizetype>(
-                    LI_CLIPBOARD_MAX_FILE_MANIFEST_BYTES)) {
-            return false;
-        }
-
-        manifest.resize(manifestSize);
-        LI_CLIPBOARD_FILE_MANIFEST_HEADER header {
-            static_cast<quint32>(entries.size()),
-            fileCount,
-            totalFileBytes,
-        };
-        if (!LiEncodeClipboardFileManifestHeader(
-                    reinterpret_cast<uint8_t*>(manifest.data()),
-                    static_cast<size_t>(manifest.size()),
-                    &header)) {
-            return false;
-        }
-
-        size_t offset = LI_CLIPBOARD_FILE_MANIFEST_HEADER_SIZE;
-        for (const ClipboardFileEntry& entry : entries) {
-            if (!isCurrent()) {
-                return false;
-            }
-            const QByteArray path = entry.relativePath.toUtf8();
-            LI_CLIPBOARD_FILE_MANIFEST_ENTRY protocolEntry {
-                entry.type,
-                static_cast<quint32>(path.size()),
-                entry.size,
-                entry.modifiedTimeMs,
-                reinterpret_cast<const uint8_t*>(path.constData()),
-            };
-            size_t encodedLength = 0;
-            if (!LiEncodeClipboardFileManifestEntry(
-                        reinterpret_cast<uint8_t*>(manifest.data()) + offset,
-                        static_cast<size_t>(manifest.size()) - offset,
-                        &protocolEntry,
-                        &encodedLength)) {
-                return false;
-            }
-            offset += encodedLength;
-        }
-        return offset == static_cast<size_t>(manifest.size()) &&
-                LiIsValidClipboardFileManifest(
-                    reinterpret_cast<const uint8_t*>(manifest.constData()),
-                    static_cast<size_t>(manifest.size()));
     }
 
     void postClipboardReadyEvent(
@@ -985,7 +789,7 @@ namespace {
             if (!isCurrent()) {
                 return false;
             }
-            return buildClipboardFileManifest(
+            return ClipboardFileManifest::build(
                         urls,
                         entries,
                         manifest,

@@ -56,6 +56,9 @@ pushd $BUILD_FOLDER
 make -j$(sysctl -n hw.logicalcpu) $(echo "$BUILD_CONFIG" | tr '[:upper:]' '[:lower:]') || fail "Make failed!"
 popd
 
+echo Running protocol conformance tests
+$BUILD_FOLDER/tests/clipboardmanifest/clipboard-manifest-test || fail "Protocol conformance tests failed!"
+
 echo Saving dSYM file
 pushd $BUILD_FOLDER
 dsymutil app/Moonlight.app/Contents/MacOS/Moonlight -o Moonlight-$VERSION.dsym || fail "dSYM creation failed!"

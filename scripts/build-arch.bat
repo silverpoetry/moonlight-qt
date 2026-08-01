@@ -171,6 +171,12 @@ pushd %BUILD_FOLDER%
 if !ERRORLEVEL! NEQ 0 goto Error
 popd
 
+if /I "%ARCH%" EQU "x64" (
+    echo Running protocol conformance tests
+    "%BUILD_FOLDER%\tests\clipboardmanifest\%BUILD_CONFIG%\clipboard-manifest-test.exe"
+    if !ERRORLEVEL! NEQ 0 goto Error
+)
+
 echo Saving PDBs
 for /r "%BUILD_FOLDER%" %%f in (*.pdb) do (
     copy "%%f" %SYMBOLS_FOLDER%

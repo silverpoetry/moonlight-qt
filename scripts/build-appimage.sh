@@ -54,6 +54,9 @@ pushd $BUILD_FOLDER
 make -j$(nproc) $(echo "$BUILD_CONFIG" | tr '[:upper:]' '[:lower:]') || fail "Make failed!"
 popd
 
+echo Running protocol conformance tests
+$BUILD_FOLDER/tests/clipboardmanifest/clipboard-manifest-test || fail "Protocol conformance tests failed!"
+
 echo Deploying to staging directory
 pushd $BUILD_FOLDER
 make install || fail "Make install failed!"
