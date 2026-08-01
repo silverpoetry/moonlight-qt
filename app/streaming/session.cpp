@@ -465,6 +465,8 @@ struct ClipboardStatusEvent
 {
     quint8 mimeType;
     bool accepted;
+    quint8 reason;
+    bool retryable;
     quint64 originId;
     quint64 itemId;
     std::shared_ptr<ClipboardTransferState> transferState;
@@ -1482,6 +1484,8 @@ void Session::clClipboardStatus(PSS_CLIPBOARD_STATUS status)
     ClipboardStatusEvent* statusEvent = new ClipboardStatusEvent {
         status->mimeType,
         status->accepted != 0,
+        status->reason,
+        status->retryable != 0,
         status->originId,
         status->itemId,
         session->m_ClipboardTransferState,
@@ -1741,8 +1745,11 @@ void Session::completeClipboardStatus(
     }
 
     if (!statusEvent->accepted) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Host rejected clipboard file publication");
+        SDL_LogWarn(
+                    SDL_LOG_CATEGORY_APPLICATION,
+                    "Host rejected clipboard file publication (reason=%u retryable=%s)",
+                    static_cast<unsigned>(statusEvent->reason),
+                    statusEvent->retryable ? "true" : "false");
         resetFileClipboardPublication();
         return;
     }
