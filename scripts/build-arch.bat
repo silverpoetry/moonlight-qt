@@ -254,6 +254,10 @@ rmdir /s /q %DEPLOY_FOLDER%\qml\QtQuick\NativeStyle
 rem icuuc.dll ships with all supported OSes (and Qt incorrectly deploys the x64 version on ARM64)
 del %DEPLOY_FOLDER%\icuuc.dll
 
+echo Copying third-party notices
+copy "%SOURCE_ROOT%\THIRD_PARTY_NOTICES.txt" "%DEPLOY_FOLDER%\THIRD_PARTY_NOTICES.txt"
+if !ERRORLEVEL! NEQ 0 goto Error
+
 if "%SIGN%"=="1" (
     echo Signing deployed binaries
     set FILES_TO_SIGN=%BUILD_FOLDER%\app\%BUILD_CONFIG%\Moonlight.exe
