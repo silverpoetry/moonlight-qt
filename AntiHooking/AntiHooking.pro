@@ -17,6 +17,14 @@ contains(QT_ARCH, arm64) {
 }
 
 LIBS += -ldetours
+
+*-msvc {
+    # The pinned Microsoft Detours binary contains SEH objects built before
+    # /guard:ehcont. LINK still synthesizes the required continuation metadata;
+    # suppress only that dependency-specific diagnostic for this DLL.
+    QMAKE_LFLAGS += -ignore:4291
+}
+
 DEFINES += ANTIHOOKING_LIBRARY
 SOURCES += antihookingprotection.cpp
 HEADERS += antihookingprotection.h

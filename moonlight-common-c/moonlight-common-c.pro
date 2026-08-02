@@ -29,6 +29,12 @@ win32 {
     INCLUDEPATH += $$PWD/../libs/windows/include
     DEFINES += HAS_QOS_FLOWID=1 HAS_PQOS_FLOWID=1
 }
+
+*-msvc {
+    # ENet intentionally combines its command and flag enums into one protocol
+    # byte. MSVC 17.14 diagnoses that upstream C idiom as C5287.
+    QMAKE_CFLAGS_WARN_ON += -wd5287
+}
 macx {
     INCLUDEPATH += $$PWD/../libs/mac/include
 }

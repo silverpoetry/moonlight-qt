@@ -35,7 +35,7 @@
       <Shortcut Id="StartMenuShortcut"
                 Name="$(var.ShortcutName)"
                 Description="$(var.ShortcutDesc)"
-                Target="[#MoonlightExe]"
+                Target="[INSTALLFOLDER]Moonlight.exe"
                 Directory="ApplicationProgramsFolder"
                 WorkingDirectory="INSTALLFOLDER" />
       <RemoveFolder Id="CleanupStartMenuShortcut"
@@ -56,7 +56,7 @@
       <Shortcut Id="DesktopShortcut"
                 Name="$(var.ShortcutName)"
                 Description="$(var.ShortcutDesc)"
-                Target="[#MoonlightExe]"
+                Target="[INSTALLFOLDER]Moonlight.exe"
                 Directory="DesktopFolder"
                 WorkingDirectory="INSTALLFOLDER" />
       <RemoveFolder Id="CleanupDesktopShortcut"

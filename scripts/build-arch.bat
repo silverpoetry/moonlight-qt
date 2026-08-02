@@ -39,17 +39,17 @@ if /I "%BUILD_CONFIG%"=="debug" (
     )
 )
 
-rem Locate qmake and determine if we're using qmake.exe or (host-)qmake.bat
-rem (host-)qmake.bat is an ARM64 forwarder to the x64 version of qmake.exe
-where qmake.bat
+rem Locate qmake and determine if we're using qmake.exe or (host-)qmake.bat.
+rem The batch wrappers are used by some cross-compiled Qt distributions.
+where qmake.bat >nul 2>&1
 if !ERRORLEVEL! EQU 0 (
     set QMAKE_CMD=call qmake.bat
 ) else (
-    where host-qmake.bat
+    where host-qmake.bat >nul 2>&1
     if !ERRORLEVEL! EQU 0 (
         set QMAKE_CMD=call host-qmake.bat
     ) else (
-        where qmake.exe
+        where qmake.exe >nul 2>&1
         if !ERRORLEVEL! EQU 0 (
             set QMAKE_CMD=qmake.exe
         ) else (
@@ -59,44 +59,57 @@ if !ERRORLEVEL! EQU 0 (
     )
 )
 
-rem Find Qt path to determine our architecture
-for /F %%i in ('where qmake') do set QT_PATH=%%i
+rem Read target metadata from qmake instead of guessing it from installation
+rem directory names. Package managers do not necessarily encode the target
+rem architecture or Qt major version in their paths.
+for /F "usebackq delims=" %%i in (`%QMAKE_CMD% -query QT_INSTALL_BINS`) do set QT_PATH=%%i
+for /F "usebackq delims=" %%i in (`%QMAKE_CMD% -query QT_HOST_BINS`) do set HOSTBIN_PATH=%%i
+for /F "usebackq delims=" %%i in (`%QMAKE_CMD% -query QT_INSTALL_ARCHDATA`) do set QT_ARCHDATA=%%i
+for /F "usebackq delims=" %%i in (`%QMAKE_CMD% -query QT_VERSION`) do set QT_VERSION=%%i
 
-rem Strip the qmake filename off the end to get the Qt bin directory itself
-set QT_PATH=%QT_PATH:\qmake.exe=%
-set QT_PATH=%QT_PATH:\qmake.bat=%
-set QT_PATH=%QT_PATH:\qmake.cmd=%
+if not exist "%QT_ARCHDATA%\mkspecs\qconfig.pri" (
+    echo Unable to locate Qt architecture metadata in %QT_ARCHDATA%
+    goto Error
+)
+
+for /F "tokens=3" %%i in ('findstr /B /C:"QT_ARCH =" "%QT_ARCHDATA%\mkspecs\qconfig.pri"') do set QT_ARCH=%%i
+for /F "tokens=1 delims=." %%i in ("%QT_VERSION%") do set QT_MAJOR_VERSION=%%i
+
+if /I "%QT_ARCH%"=="arm64" (
+    set ARCH=arm64
+) else if /I "%QT_ARCH%"=="aarch64" (
+    set ARCH=arm64
+) else if /I "%QT_ARCH%"=="x86_64" (
+    set ARCH=x64
+) else if /I "%QT_ARCH%"=="amd64" (
+    set ARCH=x64
+) else if /I "%QT_ARCH%"=="i386" (
+    set ARCH=x86
+) else if /I "%QT_ARCH%"=="x86" (
+    set ARCH=x86
+) else (
+    echo Unsupported Qt target architecture: %QT_ARCH%
+    goto Error
+)
 
 echo QT_PATH=%QT_PATH%
-if not x%QT_PATH:_arm64=%==x%QT_PATH% (
-    set ARCH=arm64
+echo QT_HOST_PATH=%HOSTBIN_PATH%
+echo QT_VERSION=%QT_VERSION%
+echo QT_ARCH=%QT_ARCH%
 
-    rem Replace the _arm64 suffix with _64 to get the x64 bin path
-    set HOSTBIN_PATH=%QT_PATH:_arm64=_64%
-    echo HOSTBIN_PATH=!HOSTBIN_PATH!
-
-    if exist %QT_PATH%\host-qtpaths.bat (
-        echo Using windeployqt.exe from HOSTBIN_PATH
-        set WINDEPLOYQT_CMD=!HOSTBIN_PATH!\windeployqt.exe --qtpaths %QT_PATH%\host-qtpaths.bat
-    ) else (
-        if exist %QT_PATH%\windeployqt.exe (
-            echo Using windeployqt.exe from QT_PATH
-            set WINDEPLOYQT_CMD=windeployqt.exe
-        ) else (
-            echo Using windeployqt.exe from HOSTBIN_PATH
-            set WINDEPLOYQT_CMD=!HOSTBIN_PATH!\windeployqt.exe --qtpaths %QT_PATH%\qtpaths.bat
-        )
-    )
+if exist "%QT_PATH%\host-qtpaths.bat" (
+    echo Using windeployqt.exe from QT_HOST_PATH
+    set WINDEPLOYQT_CMD="%HOSTBIN_PATH%\windeployqt.exe" --qtpaths "%QT_PATH%\host-qtpaths.bat"
 ) else (
-    if not x%QT_PATH:_64=%==x%QT_PATH% (
-        set ARCH=x64
-        set WINDEPLOYQT_CMD=windeployqt.exe
+    if exist "%QT_PATH%\windeployqt.exe" (
+        echo Using windeployqt.exe from QT_PATH
+        set WINDEPLOYQT_CMD="%QT_PATH%\windeployqt.exe"
     ) else (
-        if not x%QT_PATH:msvc=%==x%QT_PATH% (
-            set ARCH=x86
-            set WINDEPLOYQT_CMD=windeployqt.exe
+        if exist "%QT_PATH%\qtpaths.bat" (
+            echo Using windeployqt.exe from QT_HOST_PATH
+            set WINDEPLOYQT_CMD="%HOSTBIN_PATH%\windeployqt.exe" --qtpaths "%QT_PATH%\qtpaths.bat"
         ) else (
-            echo Unable to determine Qt architecture
+            echo Unable to locate windeployqt for this Qt installation
             goto Error
         )
     )
@@ -135,13 +148,32 @@ if /I "%VC_ARCH%" NEQ "%PROCESSOR_ARCHITECTURE%" (
 
 rem Find Visual Studio and run vcvarsall.bat
 set VSWHERE="%SOURCE_ROOT%\scripts\vswhere.exe"
-for /f "usebackq delims=" %%i in (`%VSWHERE% -latest -property installationPath`) do (
-    call "%%i\VC\Auxiliary\Build\vcvarsall.bat" %VC_ARCH%
+set VS_INSTALL_PATH=
+for /f "usebackq delims=" %%i in (`%VSWHERE% -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VS_INSTALL_PATH=%%i
+
+if not defined VS_INSTALL_PATH (
+    echo Unable to locate Visual Studio C++ build tools
+    goto Error
 )
+if not exist "%VS_INSTALL_PATH%\VC\Auxiliary\Build\vcvarsall.bat" (
+    echo Visual Studio installation is missing vcvarsall.bat: %VS_INSTALL_PATH%
+    goto Error
+)
+
+call "%VS_INSTALL_PATH%\VC\Auxiliary\Build\vcvarsall.bat" %VC_ARCH%
 if !ERRORLEVEL! NEQ 0 goto Error
+where cl.exe >nul 2>&1
+if !ERRORLEVEL! NEQ 0 (
+    echo Visual Studio environment did not provide cl.exe
+    goto Error
+)
 
 rem Find VC redistributable DLLs
-for /f "usebackq delims=" %%i in (`%VSWHERE% -latest -find VC\Redist\MSVC\*\%ARCH%\Microsoft.VC*.CRT`) do set VC_REDIST_DLL_PATH=%%i
+for /f "usebackq delims=" %%i in (`%VSWHERE% -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VC\Redist\MSVC\*\%ARCH%\Microsoft.VC*.CRT`) do set VC_REDIST_DLL_PATH=%%i
+if not defined VC_REDIST_DLL_PATH (
+    echo Unable to locate the Visual C++ redistributable for %ARCH%
+    goto Error
+)
 
 echo Cleaning output directories
 rmdir /s /q %DEPLOY_FOLDER%
@@ -167,7 +199,14 @@ popd
 
 echo Compiling Moonlight in %BUILD_CONFIG% configuration
 pushd %BUILD_FOLDER%
-%SOURCE_ROOT%\scripts\jom.exe %BUILD_CONFIG%
+if "%QT_MAJOR_VERSION%"=="5" (
+    rem Qt 5 qmake does not emit object-level dependencies for .moc files
+    rem included by source files. Serialize this legacy generator path so its
+    rem aggregate moc target completes before compilation begins.
+    %SOURCE_ROOT%\scripts\jom.exe /J 1 %BUILD_CONFIG%
+) else (
+    %SOURCE_ROOT%\scripts\jom.exe %BUILD_CONFIG%
+)
 if !ERRORLEVEL! NEQ 0 goto Error
 popd
 
@@ -184,7 +223,7 @@ for /r "%BUILD_FOLDER%" %%f in (*.pdb) do (
 )
 copy %SOURCE_ROOT%\libs\windows\lib\%ARCH%\*.pdb %SYMBOLS_FOLDER%
 if !ERRORLEVEL! NEQ 0 goto Error
-7z a %SYMBOLS_FOLDER%\MoonlightDebuggingSymbols-%ARCH%-%VERSION%.zip %SYMBOLS_FOLDER%\*.pdb
+powershell -NoProfile -Command "Compress-Archive -Path '%SYMBOLS_FOLDER%\*.pdb' -DestinationPath '%SYMBOLS_FOLDER%\MoonlightDebuggingSymbols-%ARCH%-%VERSION%.zip' -CompressionLevel Optimal -Force"
 if !ERRORLEVEL! NEQ 0 goto Error
 
 if "%ML_SYMBOL_STORE%" NEQ "" (
@@ -221,7 +260,7 @@ echo Copying GC mapping list
 copy %SOURCE_ROOT%\app\SDL_GameControllerDB\gamecontrollerdb.txt %DEPLOY_FOLDER%
 if !ERRORLEVEL! NEQ 0 goto Error
 
-if not x%QT_PATH:\5.=%==x%QT_PATH% (
+if "%QT_MAJOR_VERSION%"=="5" (
     echo Copying qt.conf for Qt 5
     copy %SOURCE_ROOT%\app\qt_qt5.conf %DEPLOY_FOLDER%\qt.conf
     if !ERRORLEVEL! NEQ 0 goto Error
@@ -241,18 +280,18 @@ if !ERRORLEVEL! NEQ 0 goto Error
 
 echo Deleting unused files
 rem Qt 5.x directories
-rmdir /s /q %DEPLOY_FOLDER%\QtQuick\Controls.2\Fusion
-rmdir /s /q %DEPLOY_FOLDER%\QtQuick\Controls.2\Imagine
-rmdir /s /q %DEPLOY_FOLDER%\QtQuick\Controls.2\Universal
+if exist "%DEPLOY_FOLDER%\QtQuick\Controls.2\Fusion" rmdir /s /q "%DEPLOY_FOLDER%\QtQuick\Controls.2\Fusion"
+if exist "%DEPLOY_FOLDER%\QtQuick\Controls.2\Imagine" rmdir /s /q "%DEPLOY_FOLDER%\QtQuick\Controls.2\Imagine"
+if exist "%DEPLOY_FOLDER%\QtQuick\Controls.2\Universal" rmdir /s /q "%DEPLOY_FOLDER%\QtQuick\Controls.2\Universal"
 rem Qt 6.8+ directories
-rmdir /s /q %DEPLOY_FOLDER%\qml\QtQuick\Controls\Fusion
-rmdir /s /q %DEPLOY_FOLDER%\qml\QtQuick\Controls\Imagine
-rmdir /s /q %DEPLOY_FOLDER%\qml\QtQuick\Controls\Universal
-rmdir /s /q %DEPLOY_FOLDER%\qml\QtQuick\Controls\Windows
-rmdir /s /q %DEPLOY_FOLDER%\qml\QtQuick\Controls\FluentWinUI3
-rmdir /s /q %DEPLOY_FOLDER%\qml\QtQuick\NativeStyle
+if exist "%DEPLOY_FOLDER%\qml\QtQuick\Controls\Fusion" rmdir /s /q "%DEPLOY_FOLDER%\qml\QtQuick\Controls\Fusion"
+if exist "%DEPLOY_FOLDER%\qml\QtQuick\Controls\Imagine" rmdir /s /q "%DEPLOY_FOLDER%\qml\QtQuick\Controls\Imagine"
+if exist "%DEPLOY_FOLDER%\qml\QtQuick\Controls\Universal" rmdir /s /q "%DEPLOY_FOLDER%\qml\QtQuick\Controls\Universal"
+if exist "%DEPLOY_FOLDER%\qml\QtQuick\Controls\Windows" rmdir /s /q "%DEPLOY_FOLDER%\qml\QtQuick\Controls\Windows"
+if exist "%DEPLOY_FOLDER%\qml\QtQuick\Controls\FluentWinUI3" rmdir /s /q "%DEPLOY_FOLDER%\qml\QtQuick\Controls\FluentWinUI3"
+if exist "%DEPLOY_FOLDER%\qml\QtQuick\NativeStyle" rmdir /s /q "%DEPLOY_FOLDER%\qml\QtQuick\NativeStyle"
 rem icuuc.dll ships with all supported OSes (and Qt incorrectly deploys the x64 version on ARM64)
-del %DEPLOY_FOLDER%\icuuc.dll
+if exist "%DEPLOY_FOLDER%\icuuc.dll" del "%DEPLOY_FOLDER%\icuuc.dll"
 
 echo Copying third-party notices
 copy "%SOURCE_ROOT%\THIRD_PARTY_NOTICES.txt" "%DEPLOY_FOLDER%\THIRD_PARTY_NOTICES.txt"
@@ -302,7 +341,7 @@ if defined CI_VERSION (
     if !ERRORLEVEL! NEQ 0 goto Error
 )
 
-7z a %INSTALLER_FOLDER%\MoonlightPortable-%ARCH%-%VERSION%.zip %DEPLOY_FOLDER%\*
+powershell -NoProfile -Command "Compress-Archive -Path '%DEPLOY_FOLDER%\*' -DestinationPath '%INSTALLER_FOLDER%\MoonlightPortable-%ARCH%-%VERSION%.zip' -CompressionLevel Optimal -Force"
 if !ERRORLEVEL! NEQ 0 goto Error
 
 echo Build successful for Moonlight v%VERSION% %ARCH% binaries!
