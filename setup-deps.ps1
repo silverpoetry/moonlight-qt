@@ -3,7 +3,16 @@ $ErrorActionPreference = 'Stop'
 $Organization = "moonlight-stream"
 $PrebuiltRepo = "moonlight-qt-deps"
 $TargetDir = Join-Path $PSScriptRoot "libs\windows"
-$Assets = @("windows-x64.zip", "windows-ARM64.zip")
+$Assets = @(
+    @{
+        Name = "Windows-x64.zip"
+        Sha256 = "6DD094EDD9D022AE444D687748FF6B068B25FB84901970B48A0449563F85AD29"
+    },
+    @{
+        Name = "Windows-ARM64.zip"
+        Sha256 = "327848C8D092D7FD5ECE6A5C6BF13DC09E09AE6A7455B23190124319B22182B9"
+    }
+)
 $Tag = "v6"
 $WindowsSdkCppPackage = @{
     Id = "Microsoft.Windows.SDK.CPP"
@@ -17,7 +26,7 @@ function Download-FileChecked {
     param(
         [Parameter(Mandatory=$true)][string]$Url,
         [Parameter(Mandatory=$true)][string]$Destination,
-        [string]$Sha256
+        [Parameter(Mandatory=$true)][string]$Sha256
     )
 
     curl.exe -s -L -f -o "$Destination" "$Url"
@@ -25,11 +34,9 @@ function Download-FileChecked {
         exit $LASTEXITCODE
     }
 
-    if (![string]::IsNullOrEmpty($Sha256)) {
-        $ActualHash = (Get-FileHash -Algorithm SHA256 -Path "$Destination").Hash
-        if ($ActualHash -ne $Sha256) {
-            throw "SHA256 mismatch for $Destination. Expected $Sha256 but got $ActualHash."
-        }
+    $ActualHash = (Get-FileHash -Algorithm SHA256 -Path "$Destination").Hash
+    if ($ActualHash -ne $Sha256) {
+        throw "SHA256 mismatch for $Destination. Expected $Sha256 but got $ActualHash."
     }
 }
 
@@ -40,12 +47,13 @@ if (Test-Path $TargetDir) {
     New-Item -ItemType Directory -Path $TargetDir | Out-Null
 }
 
-foreach ($AssetName in $Assets) {
+foreach ($Asset in $Assets) {
+    $AssetName = $Asset.Name
     $Url = "https://github.com/$Organization/$PrebuiltRepo/releases/download/$Tag/$AssetName"
     $ArchivePath = Join-Path $env:TEMP $AssetName
 
     Write-Host "Downloading $AssetName..." -ForegroundColor Cyan
-    Download-FileChecked -Url $Url -Destination $ArchivePath
+    Download-FileChecked -Url $Url -Destination $ArchivePath -Sha256 $Asset.Sha256
 
     Write-Host "Extracting $AssetName..." -ForegroundColor Cyan
     Expand-Archive -Path $ArchivePath -DestinationPath $TargetDir -Force
