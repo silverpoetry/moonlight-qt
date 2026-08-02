@@ -176,15 +176,15 @@ if not defined VC_REDIST_DLL_PATH (
 )
 
 echo Cleaning output directories
-rmdir /s /q %DEPLOY_FOLDER%
-rmdir /s /q %BUILD_FOLDER%
-rmdir /s /q %INSTALLER_FOLDER%
-rmdir /s /q %SYMBOLS_FOLDER%
-mkdir %BUILD_ROOT%
-mkdir %DEPLOY_FOLDER%
-mkdir %BUILD_FOLDER%
-mkdir %INSTALLER_FOLDER%
-mkdir %SYMBOLS_FOLDER%
+if exist "%DEPLOY_FOLDER%" rmdir /s /q "%DEPLOY_FOLDER%"
+if exist "%BUILD_FOLDER%" rmdir /s /q "%BUILD_FOLDER%"
+if exist "%INSTALLER_FOLDER%" rmdir /s /q "%INSTALLER_FOLDER%"
+if exist "%SYMBOLS_FOLDER%" rmdir /s /q "%SYMBOLS_FOLDER%"
+if not exist "%BUILD_ROOT%" mkdir "%BUILD_ROOT%"
+mkdir "%DEPLOY_FOLDER%"
+mkdir "%BUILD_FOLDER%"
+mkdir "%INSTALLER_FOLDER%"
+mkdir "%SYMBOLS_FOLDER%"
 
 rem Enable LTCG for official builds
 set CFLAGS=/GL
