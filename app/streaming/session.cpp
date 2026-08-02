@@ -127,9 +127,9 @@ struct DecoderPropertiesCacheValue
     bool hardwareAccelerated;
 };
 
-static size_t mixHash(size_t seed, int value)
+static uint mixHash(uint seed, int value)
 {
-    return seed ^ ::qHash(value, seed + 0x9e3779b9 + (seed << 6) + (seed >> 2));
+    return seed ^ ::qHash(value, seed + 0x9e3779b9U + (seed << 6) + (seed >> 2));
 }
 
 uint qHash(const DecoderAvailabilityCacheKey& key, uint seed = 0)

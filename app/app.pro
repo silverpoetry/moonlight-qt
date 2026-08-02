@@ -36,6 +36,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 win32 {
+    # Build the Qt Windows entry point with the same control-flow protection
+    # flags as the application. Some binary Qt distributions ship qtmain
+    # without /guard:ehcont, which weakens the link and produces LNK4291.
+    QMAKE_LIBS_QT_ENTRY =
+    SOURCES += platform/windows/qtmain_win.cpp
+
     !exists($$PWD/../libs/windows) {
         error("Missing dependencies. Please run 'powershell .\setup-deps.ps1' to fetch prebuilt libraries.")
     }
@@ -55,7 +61,7 @@ win32 {
     }
 
     INCLUDEPATH += $$PWD/../libs/windows/include $$CPPWINRT_28000_INCLUDE
-    LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib oleaut32.lib runtimeobject.lib gdi32.lib user32.lib d3d9.lib dwmapi.lib dbghelp.lib
+    LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib oleaut32.lib runtimeobject.lib gdi32.lib user32.lib shell32.lib d3d9.lib dwmapi.lib dbghelp.lib
 }
 macx:!disable-prebuilts {
     !exists($$PWD/../libs/mac) {

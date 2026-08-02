@@ -14,6 +14,11 @@ CONFIG(release, debug|release) {
 
 # Enable CFG, EHCont, and CET
 *-msvc {
+    # Compile all sources as UTF-8. This also keeps diagnostics from third-party
+    # headers independent of the active Windows system code page.
+    QMAKE_CFLAGS += /utf-8
+    QMAKE_CXXFLAGS += /utf-8
+
     QMAKE_CFLAGS += -guard:cf -guard:ehcont
     QMAKE_CXXFLAGS += -guard:cf -guard:ehcont
     QMAKE_LFLAGS += -guard:cf -guard:ehcont
