@@ -8,17 +8,17 @@ import shutil
 
 ORGANIZATION = "moonlight-stream"
 PREBUILT_REPO = "moonlight-qt-deps"
-TAG = "v6"
+TAG = "v12"
 PLATFORM_CONFIG = {
     "Darwin": (
         "mac",
         "macOS-universal.zip",
-        "dd39a7cdd19f0179f175e399f7e8ba7646169aad371fdafe8cd7219fc0d6cc78",
+        "446228fb68d5aef4bb8791f08e5e98e38e6ecffdefac7633902fc463189a0f3c",
     ),
     "Linux": (
         "steamlink",
         "steamlink.zip",
-        "b601c521fedfb079617cdefda95113b7bd22d0eba93a9f72a01815b3669c0ee7",
+        "c4d58d8e8ffee46531cf9a93d9daf3fbc81f831685bba55c4222e995764025bf",
     ),
 }
 

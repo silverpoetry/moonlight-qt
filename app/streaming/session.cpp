@@ -103,6 +103,7 @@ namespace {
 struct DecoderAvailabilityCacheKey
 {
     int decoderSelection;
+    int rendererSelection;
     int videoFormat;
     int width;
     int height;
@@ -111,6 +112,7 @@ struct DecoderAvailabilityCacheKey
     bool operator==(const DecoderAvailabilityCacheKey& other) const
     {
         return decoderSelection == other.decoderSelection &&
+               rendererSelection == other.rendererSelection &&
                videoFormat == other.videoFormat &&
                width == other.width &&
                height == other.height &&
@@ -135,6 +137,7 @@ static uint mixHash(uint seed, int value)
 uint qHash(const DecoderAvailabilityCacheKey& key, uint seed = 0)
 {
     seed = mixHash(seed, key.decoderSelection);
+    seed = mixHash(seed, key.rendererSelection);
     seed = mixHash(seed, key.videoFormat);
     seed = mixHash(seed, key.width);
     seed = mixHash(seed, key.height);
@@ -2082,6 +2085,7 @@ void Session::applyNativeCursor(const NativeCursorEvent* cursorEvent)
 
 
 bool Session::chooseDecoder(StreamingPreferences::VideoDecoderSelection vds,
+                            StreamingPreferences::RendererSelection renderer,
                             SDL_Window* window, int videoFormat, int width, int height,
                             int frameRate, bool enableVsync, bool enableFramePacing, bool testOnly, IVideoDecoder*& chosenDecoder)
 {
@@ -2102,9 +2106,11 @@ bool Session::chooseDecoder(StreamingPreferences::VideoDecoderSelection vds,
     params.testOnly = testOnly;
     params.skipTestFrame = false;
     params.vds = vds;
+    params.renderer = renderer;
 
     if (!testOnly && s_ActiveSession != nullptr &&
             s_ActiveSession->m_PrevalidatedDecoderSelection == static_cast<int>(vds) &&
+            s_ActiveSession->m_PrevalidatedRendererSelection == static_cast<int>(renderer) &&
             s_ActiveSession->m_PrevalidatedVideoFormat == videoFormat &&
             s_ActiveSession->m_PrevalidatedVideoWidth == width &&
             s_ActiveSession->m_PrevalidatedVideoHeight == height &&
@@ -2223,6 +2229,7 @@ void Session::getDecoderInfo(SDL_Window* window,
 
     // Try an HEVC Main10 decoder first to see if we have HDR support
     if (chooseDecoder(StreamingPreferences::VDS_FORCE_HARDWARE,
+                      StreamingPreferences::RS_PROBE_ONLY,
                       window, VIDEO_FORMAT_H265_MAIN10, 1920, 1080, 60,
                       false, false, true, decoder)) {
         isHardwareAccelerated = decoder->isHardwareAccelerated();
@@ -2236,6 +2243,7 @@ void Session::getDecoderInfo(SDL_Window* window,
 
     // Try an AV1 Main10 decoder next to see if we have HDR support
     if (chooseDecoder(StreamingPreferences::VDS_FORCE_HARDWARE,
+                      StreamingPreferences::RS_PROBE_ONLY,
                       window, VIDEO_FORMAT_AV1_MAIN10, 1920, 1080, 60,
                       false, false, true, decoder)) {
         // If we've got a working AV1 Main 10-bit decoder, we'll enable the HDR checkbox
@@ -2248,9 +2256,11 @@ void Session::getDecoderInfo(SDL_Window* window,
         // If we found no hardware decoders with HDR, check for a renderer
         // that supports HDR rendering with software decoded frames.
         if (chooseDecoder(StreamingPreferences::VDS_FORCE_SOFTWARE,
+                          StreamingPreferences::RS_PROBE_ONLY,
                           window, VIDEO_FORMAT_H265_MAIN10, 1920, 1080, 60,
                           false, false, true, decoder) ||
             chooseDecoder(StreamingPreferences::VDS_FORCE_SOFTWARE,
+                          StreamingPreferences::RS_PROBE_ONLY,
                           window, VIDEO_FORMAT_AV1_MAIN10, 1920, 1080, 60,
                           false, false, true, decoder)) {
             isHdrSupported = decoder->isHdrSupported();
@@ -2265,6 +2275,7 @@ void Session::getDecoderInfo(SDL_Window* window,
 
     // Try a regular hardware accelerated HEVC decoder now
     if (chooseDecoder(StreamingPreferences::VDS_FORCE_HARDWARE,
+                      StreamingPreferences::RS_PROBE_ONLY,
                       window, VIDEO_FORMAT_H265, 1920, 1080, 60,
                       false, false, true, decoder)) {
         isHardwareAccelerated = decoder->isHardwareAccelerated();
@@ -2278,6 +2289,7 @@ void Session::getDecoderInfo(SDL_Window* window,
 
 #if 0 // See AV1 comment at the top of this function
     if (chooseDecoder(StreamingPreferences::VDS_FORCE_HARDWARE,
+                      StreamingPreferences::RS_PROBE_ONLY,
                       window, VIDEO_FORMAT_AV1_MAIN8, 1920, 1080, 60,
                       false, false, true, decoder)) {
         isHardwareAccelerated = decoder->isHardwareAccelerated();
@@ -2292,6 +2304,7 @@ void Session::getDecoderInfo(SDL_Window* window,
     // If we still didn't find a hardware decoder, try H.264 now.
     // This will fall back to software decoding, so it should always work.
     if (chooseDecoder(StreamingPreferences::VDS_AUTO,
+                      StreamingPreferences::RS_PROBE_ONLY,
                       window, VIDEO_FORMAT_H264, 1920, 1080, 60,
                       false, false, true, decoder)) {
         isHardwareAccelerated = decoder->isHardwareAccelerated();
@@ -2313,7 +2326,10 @@ Session::getDecoderAvailability(SDL_Window* window,
 {
     IVideoDecoder* decoder;
 
-    if (!chooseDecoder(vds, window, videoFormat, width, height, frameRate, false, false, true, decoder)) {
+    if (!chooseDecoder(vds,
+                       StreamingPreferences::RS_PROBE_ONLY,
+                       window, videoFormat, width, height, frameRate,
+                       false, false, true, decoder)) {
         return DecoderAvailability::None;
     }
 
@@ -2331,6 +2347,7 @@ Session::getCachedDecoderAvailability(SDL_Window* window,
 {
     DecoderAvailabilityCacheKey key = {
         static_cast<int>(vds),
+        static_cast<int>(StreamingPreferences::RS_PROBE_ONLY),
         videoFormat,
         width,
         height,
@@ -2350,7 +2367,8 @@ Session::getCachedDecoderAvailability(SDL_Window* window,
     int colorRange;
     bool alwaysFullScreen;
     bool hardwareAccelerated;
-    if (!getCachedDecoderProperties(window, vds, videoFormat, width, height, frameRate,
+    if (!getCachedDecoderProperties(window, vds, StreamingPreferences::RS_PROBE_ONLY,
+                                    videoFormat, width, height, frameRate,
                                     capabilities, colorSpace, colorRange, alwaysFullScreen,
                                     hardwareAccelerated)) {
         QMutexLocker locker(&s_DecoderCacheLock);
@@ -2364,6 +2382,7 @@ Session::getCachedDecoderAvailability(SDL_Window* window,
 bool
 Session::getCachedDecoderProperties(SDL_Window* window,
                                     StreamingPreferences::VideoDecoderSelection vds,
+                                    StreamingPreferences::RendererSelection renderer,
                                     int videoFormat,
                                     int width,
                                     int height,
@@ -2376,6 +2395,7 @@ Session::getCachedDecoderProperties(SDL_Window* window,
 {
     DecoderAvailabilityCacheKey key = {
         static_cast<int>(vds),
+        static_cast<int>(renderer),
         videoFormat,
         width,
         height,
@@ -2397,6 +2417,7 @@ Session::getCachedDecoderProperties(SDL_Window* window,
 
     IVideoDecoder* decoder;
     if (!chooseDecoder(vds,
+                       renderer,
                        window,
                        videoFormat,
                        width,
@@ -2463,7 +2484,8 @@ void Session::prewarmDecoderCache(SDL_Window* window,
     int colorRange;
     bool alwaysFullScreen;
     bool hardwareAccelerated;
-    getCachedDecoderProperties(window, vds, videoFormat, width, height, frameRate,
+    getCachedDecoderProperties(window, vds, StreamingPreferences::RS_PROBE_ONLY,
+                               videoFormat, width, height, frameRate,
                                capabilities, colorSpace, colorRange, alwaysFullScreen,
                                hardwareAccelerated);
 }
@@ -2477,6 +2499,7 @@ bool Session::populateDecoderProperties(SDL_Window* window)
 
     if (!getCachedDecoderProperties(window,
                                     m_Preferences->videoDecoderSelection,
+                                    m_Preferences->rendererSelection,
                                     m_SupportedVideoFormats.first(),
                                     m_StreamConfig.width,
                                     m_StreamConfig.height,
@@ -2490,6 +2513,7 @@ bool Session::populateDecoderProperties(SDL_Window* window)
     }
 
     m_PrevalidatedDecoderSelection = static_cast<int>(m_Preferences->videoDecoderSelection);
+    m_PrevalidatedRendererSelection = static_cast<int>(m_Preferences->rendererSelection);
     m_PrevalidatedVideoFormat = m_SupportedVideoFormats.first();
     m_PrevalidatedVideoWidth = m_StreamConfig.width;
     m_PrevalidatedVideoHeight = m_StreamConfig.height;
@@ -2565,6 +2589,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_ActiveVideoHeight(0),
       m_ActiveVideoFrameRate(0),
       m_PrevalidatedDecoderSelection(-1),
+      m_PrevalidatedRendererSelection(-1),
       m_PrevalidatedVideoFormat(0),
       m_PrevalidatedVideoWidth(0),
       m_PrevalidatedVideoHeight(0),
@@ -4451,6 +4476,7 @@ void Session::exec()
                 // not if a GPU was removed or something).
                 logStartupTiming("Session.exec chooseDecoder begin");
                 if (!chooseDecoder(m_Preferences->videoDecoderSelection,
+                                   m_Preferences->rendererSelection,
                                    m_Window, m_ActiveVideoFormat, m_ActiveVideoWidth,
                                    m_ActiveVideoHeight, m_ActiveVideoFrameRate,
                                    enableVsync,

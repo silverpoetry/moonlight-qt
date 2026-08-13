@@ -6,14 +6,14 @@ $TargetDir = Join-Path $PSScriptRoot "libs\windows"
 $Assets = @(
     @{
         Name = "Windows-x64.zip"
-        Sha256 = "6DD094EDD9D022AE444D687748FF6B068B25FB84901970B48A0449563F85AD29"
+        Sha256 = "1100EA3C341BB741367BE202D8161362C7D9941080B0B26334114950A405B2BF"
     },
     @{
         Name = "Windows-ARM64.zip"
-        Sha256 = "327848C8D092D7FD5ECE6A5C6BF13DC09E09AE6A7455B23190124319B22182B9"
+        Sha256 = "F49CA03B321A3AA7706E1186F43ECDE5E74E0E95D1F41661018D5CF55CB5EDEA"
     }
 )
-$Tag = "v6"
+$Tag = "v12"
 $WindowsSdkCppPackage = @{
     Id = "Microsoft.Windows.SDK.CPP"
     Version = "10.0.28000.1839"
@@ -39,7 +39,6 @@ function Download-FileChecked {
         throw "SHA256 mismatch for $Destination. Expected $Sha256 but got $ActualHash."
     }
 }
-
 if (Test-Path $TargetDir) {
     Write-Host "Cleaning target directory..." -ForegroundColor Cyan
     Remove-Item -Path "$TargetDir\*" -Recurse -Force

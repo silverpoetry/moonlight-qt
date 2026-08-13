@@ -217,6 +217,7 @@ private:
     static
     bool getCachedDecoderProperties(SDL_Window* window,
                                     StreamingPreferences::VideoDecoderSelection vds,
+                                    StreamingPreferences::RendererSelection renderer,
                                     int videoFormat,
                                     int width,
                                     int height,
@@ -229,6 +230,7 @@ private:
 
     static
     bool chooseDecoder(StreamingPreferences::VideoDecoderSelection vds,
+                       StreamingPreferences::RendererSelection renderer,
                        SDL_Window* window, int videoFormat, int width, int height,
                        int frameRate, bool enableVsync, bool enableFramePacing,
                        bool testOnly,
@@ -377,6 +379,7 @@ private:
     int m_ActiveVideoHeight;
     int m_ActiveVideoFrameRate;
     int m_PrevalidatedDecoderSelection;
+    int m_PrevalidatedRendererSelection;
     int m_PrevalidatedVideoFormat;
     int m_PrevalidatedVideoWidth;
     int m_PrevalidatedVideoHeight;

@@ -44,6 +44,17 @@ public:
     };
     Q_ENUM(VideoDecoderSelection)
 
+    // Mac only (for now)
+    enum RendererSelection
+    {
+        RS_PROBE_ONLY = -1, // Only valid for probing decoder properties
+        RS_AUTO,
+        RS_VULKAN,
+        RS_METAL,
+        RS_AVSBDL
+    };
+    Q_ENUM(RendererSelection)
+
     enum WindowMode
     {
         WM_FULLSCREEN,
@@ -150,6 +161,7 @@ public:
     Q_PROPERTY(bool enableHdr MEMBER enableHdr NOTIFY enableHdrChanged)
     Q_PROPERTY(bool enableYUV444 MEMBER enableYUV444 NOTIFY enableYUV444Changed)
     Q_PROPERTY(VideoDecoderSelection videoDecoderSelection MEMBER videoDecoderSelection NOTIFY videoDecoderSelectionChanged)
+    Q_PROPERTY(RendererSelection rendererSelection MEMBER rendererSelection NOTIFY rendererSelectionChanged)
     Q_PROPERTY(WindowMode windowMode MEMBER windowMode NOTIFY windowModeChanged)
     Q_PROPERTY(WindowMode recommendedFullScreenMode MEMBER recommendedFullScreenMode CONSTANT)
     Q_PROPERTY(UIDisplayMode uiDisplayMode MEMBER uiDisplayMode NOTIFY uiDisplayModeChanged)
@@ -215,6 +227,7 @@ public:
     UIDisplayMode uiDisplayMode;
     Language language;
     CaptureSysKeysMode captureSysKeysMode;
+    RendererSelection rendererSelection;
 
 signals:
     void displayModeChanged();
@@ -257,6 +270,7 @@ signals:
     void keepAwakeChanged();
     void autoReconnectAfterResumeChanged();
     void languageChanged();
+    void rendererSelectionChanged();
 
 private:
     explicit StreamingPreferences(QQmlEngine *qmlEngine);
