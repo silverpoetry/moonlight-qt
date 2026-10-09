@@ -22,6 +22,10 @@ struct ClipboardFileOfferEvent;
 struct ClipboardStatusEvent;
 struct ClipboardTransferState;
 
+namespace NativeCursor {
+class Cursor;
+}
+
 class SupportedVideoFormatList : public QList<int>
 {
 public:
@@ -323,7 +327,7 @@ private:
     NvComputer* m_Computer;
     NvApp m_App;
     SDL_Window* m_Window;
-    SDL_Cursor* m_NativeCursor;
+    std::unique_ptr<NativeCursor::Cursor> m_NativeCursor;
     quint32 m_NativeCursorShapeId;
     quint32 m_NativeCursorSourceShapeId;
     quint32 m_NativeCursorScaleX;
@@ -332,6 +336,7 @@ private:
     quint16 m_NativeCursorSourceHeight;
     quint16 m_NativeCursorSourceHotspotX;
     quint16 m_NativeCursorSourceHotspotY;
+    quint8 m_NativeCursorSourceFormat;
     QByteArray m_NativeCursorSourceImageData;
     IVideoDecoder* m_VideoDecoder;
     SDL_mutex* m_DecoderLock;

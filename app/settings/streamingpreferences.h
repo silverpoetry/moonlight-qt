@@ -130,6 +130,9 @@ public:
     };
     Q_ENUM(CaptureSysKeysMode);
 
+    enum TouchpadCaptureMode { TPC_OFF = 0, TPC_THREE = 1, TPC_FOUR = 2, TPC_BOTH = 3 };
+    Q_ENUM(TouchpadCaptureMode);
+
     Q_PROPERTY(int width MEMBER width NOTIFY displayModeChanged)
     Q_PROPERTY(int height MEMBER height NOTIFY displayModeChanged)
     Q_PROPERTY(ResolutionSelection resolutionSelection MEMBER resolutionSelection NOTIFY displayModeChanged)
@@ -144,8 +147,10 @@ public:
     Q_PROPERTY(bool enableMdns MEMBER enableMdns NOTIFY enableMdnsChanged)
     Q_PROPERTY(bool quitAppAfter MEMBER quitAppAfter NOTIFY quitAppAfterChanged)
     Q_PROPERTY(bool absoluteMouseMode MEMBER absoluteMouseMode NOTIFY absoluteMouseModeChanged)
+    Q_PROPERTY(bool hideCursorOnStreamStart MEMBER hideCursorOnStreamStart NOTIFY hideCursorOnStreamStartChanged)
     Q_PROPERTY(bool absoluteTouchMode MEMBER absoluteTouchMode NOTIFY absoluteTouchModeChanged)
     Q_PROPERTY(bool enableTouchpadGestures MEMBER enableTouchpadGestures NOTIFY enableTouchpadGesturesChanged)
+    Q_PROPERTY(TouchpadCaptureMode touchpadCaptureMode MEMBER touchpadCaptureMode NOTIFY touchpadCaptureModeChanged)
     Q_PROPERTY(bool disableAdaptiveInputThrottling MEMBER disableAdaptiveInputThrottling NOTIFY disableAdaptiveInputThrottlingChanged)
     Q_PROPERTY(bool enableClipboardSync MEMBER enableClipboardSync NOTIFY enableClipboardSyncChanged)
     Q_PROPERTY(bool framePacing MEMBER framePacing NOTIFY framePacingChanged)
@@ -197,8 +202,10 @@ public:
     bool enableMdns;
     bool quitAppAfter;
     bool absoluteMouseMode;
+    bool hideCursorOnStreamStart;
     bool absoluteTouchMode;
     bool enableTouchpadGestures;
+    TouchpadCaptureMode touchpadCaptureMode;
     bool disableAdaptiveInputThrottling;
     bool enableClipboardSync;
     bool framePacing;
@@ -242,8 +249,10 @@ signals:
     void enableMdnsChanged();
     void quitAppAfterChanged();
     void absoluteMouseModeChanged();
+    void hideCursorOnStreamStartChanged();
     void absoluteTouchModeChanged();
     void enableTouchpadGesturesChanged();
+    void touchpadCaptureModeChanged();
     void disableAdaptiveInputThrottlingChanged();
     void enableClipboardSyncChanged();
     void audioConfigChanged();

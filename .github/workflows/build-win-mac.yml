@@ -65,21 +65,21 @@ jobs:
 
       - name: Build x64 binaries (Windows)
         if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          set "PATH=%QT_PATH%;%PATH%"
-          scripts\build-arch.bat Release x64
-        env:
-          QT_PATH: ${{ runner.workspace }}\Qt\${{ matrix.qt_version }}\msvc2022_64\bin
+        shell: pwsh
+        run: >-
+          ./scripts/build-windows.ps1
+          -Configuration release
+          -Architecture x64
+          -QtRoot "${{ runner.workspace }}\Qt"
 
       - name: Build ARM64 binaries (Windows)
         if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          set "PATH=%QT_PATH%;%PATH%"
-          scripts\build-arch.bat Release arm64
-        env:
-          QT_PATH: ${{ runner.workspace }}\Qt\${{ matrix.qt_version }}\msvc2022_arm64\bin
+        shell: pwsh
+        run: >-
+          ./scripts/build-windows.ps1
+          -Configuration release
+          -Architecture arm64
+          -QtRoot "${{ runner.workspace }}\Qt"
 
       - name: Build Package
         shell: pwsh

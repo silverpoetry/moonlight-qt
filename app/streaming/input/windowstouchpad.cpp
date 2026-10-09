@@ -44,6 +44,10 @@ LRESULT CALLBACK nativeMessageHookWndProc(HWND hwnd, UINT message, WPARAM wParam
                 GetPropW(hwnd, MESSAGE_HOOK_PREV_PROC_PROP));
 
     if (handler != nullptr) {
+        if (handler->handleWindowsNativeCursorMessage(message, lParam)) {
+            return TRUE;
+        }
+
         if (handler->handleNativeTouchpadWheelMessage(message, wParam) ||
                 handler->handleNativeWindowCloseMessage(message, wParam)) {
             return 0;
@@ -186,7 +190,8 @@ void SdlInputHandler::installWindowsMessageHook(void* hwndValue)
 {
 #ifdef Q_OS_WIN32
     auto hwnd = static_cast<HWND>(hwndValue);
-    if (!m_EnableTouchpadGestures || hwnd == nullptr || m_WindowsMessageHookHwnd == hwnd) {
+    if ((!m_EnableTouchpadGestures && m_WindowsNativeCursor == nullptr) ||
+            hwnd == nullptr || m_WindowsMessageHookHwnd == hwnd) {
         return;
     }
 
@@ -211,7 +216,7 @@ void SdlInputHandler::installWindowsMessageHook(void* hwndValue)
         RemovePropW(hwnd, MESSAGE_HOOK_HANDLER_PROP);
         RemovePropW(hwnd, MESSAGE_HOOK_PREV_PROC_PROP);
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Failed to install native Windows touchpad hook: %lu",
+                    "Failed to install native Windows message hook: %lu",
                     GetLastError());
         return;
     }
@@ -222,6 +227,66 @@ void SdlInputHandler::installWindowsMessageHook(void* hwndValue)
 #else
     Q_UNUSED(hwndValue);
 #endif
+}
+
+void SdlInputHandler::setWindowsNativeCursor(void* cursor)
+{
+    m_WindowsNativeCursor = cursor;
+    m_WindowsNativeCursorVisible = false;
+#ifdef Q_OS_WIN32
+    if (cursor != nullptr && m_Window != nullptr) {
+        SDL_SysWMinfo info;
+        SDL_VERSION(&info.version);
+        if (SDL_GetWindowWMInfo(m_Window, &info) && info.subsystem == SDL_SYSWM_WINDOWS) {
+            installWindowsMessageHook(info.info.win.window);
+        }
+    }
+    else if (!m_EnableTouchpadGestures) {
+        restoreWindowsMessageHook();
+    }
+
+    refreshWindowsNativeCursor();
+#endif
+}
+
+void SdlInputHandler::refreshWindowsNativeCursor()
+{
+#ifdef Q_OS_WIN32
+    auto hwnd = static_cast<HWND>(m_WindowsMessageHookHwnd);
+    m_WindowsNativeCursorVisible = m_WindowsNativeCursor != nullptr &&
+            SDL_ShowCursor(SDL_QUERY) == SDL_ENABLE;
+    if (!m_WindowsNativeCursorVisible || hwnd == nullptr) {
+        return;
+    }
+
+    POINT cursorPosition;
+    RECT clientRect;
+    if (GetCursorPos(&cursorPosition) &&
+            ScreenToClient(hwnd, &cursorPosition) &&
+            GetClientRect(hwnd, &clientRect) &&
+            PtInRect(&clientRect, cursorPosition)) {
+        SetCursor(static_cast<HCURSOR>(m_WindowsNativeCursor));
+    }
+#endif
+}
+
+bool SdlInputHandler::handleWindowsNativeCursorMessage(unsigned int message, intptr_t lParam)
+{
+#ifdef Q_OS_WIN32
+    // WM_SETCURSOR can be dispatched synchronously from SDL cursor APIs. Do not
+    // call back into SDL here, because its cursor lock may already be held.
+    if (message == WM_SETCURSOR &&
+            LOWORD(lParam) == HTCLIENT &&
+            m_WindowsNativeCursor != nullptr &&
+            m_WindowsNativeCursorVisible) {
+        SetCursor(static_cast<HCURSOR>(m_WindowsNativeCursor));
+        return true;
+    }
+#else
+    Q_UNUSED(message);
+    Q_UNUSED(lParam);
+#endif
+    return false;
 }
 
 void SdlInputHandler::restoreWindowsMessageHook()
@@ -437,9 +502,23 @@ SdlInputHandler::handleNativeTouchpadProtocolFrame(uint32_t pointerId)
 
     const bool globalOwnsSequence =
             m_NativeTouchpadOwner == NativeTouchpadOwner::Global;
+    if (pointerCount < GLOBAL_TOUCHPAD_MIN_CONTACTS &&
+            !globalOwnsSequence && !m_ForwardTwoFingerGestures) {
+        cancelNativeTouchpadContacts();
+        return NativeTouchpadFrameResult::Unhandled;
+    }
     const bool reservedForGlobalController =
             m_TouchpadGlobalNativeForwardingEnabled &&
             pointerCount >= GLOBAL_TOUCHPAD_MIN_CONTACTS;
+    if (pointerCount >= GLOBAL_TOUCHPAD_MIN_CONTACTS &&
+            !globalOwnsSequence &&
+            !((pointerCount == 3 && (m_TouchpadCaptureMode & StreamingPreferences::TPC_THREE)) ||
+              (pointerCount == 4 && (m_TouchpadCaptureMode & StreamingPreferences::TPC_FOUR)))) {
+        if (m_NativeTouchpadOwner == NativeTouchpadOwner::Window) {
+            cancelNativeTouchpadContacts();
+        }
+        return NativeTouchpadFrameResult::Unhandled;
+    }
     if (globalOwnsSequence || reservedForGlobalController) {
         if (m_NativeTouchpadOwner == NativeTouchpadOwner::Window) {
             cancelNativeTouchpadContacts();
@@ -977,7 +1056,7 @@ bool SdlInputHandler::handleSystemWindowEvent(SDL_SysWMmsg* msg)
 bool SdlInputHandler::isTouchpadCtrlFallbackActive() const
 {
 #ifdef Q_OS_WIN32
-    if (!m_EnableTouchpadGestures) {
+    if (!m_ForwardTwoFingerGestures) {
         return false;
     }
 

@@ -77,10 +77,10 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
                     "Detected cursor visibility toggle combo");
 
         if (!SDL_GetRelativeMouseMode()) {
-            m_MouseCursorCapturedVisibilityState = !m_MouseCursorCapturedVisibilityState;
-            SDL_SetHint("MoonlightNativeCursorUserHidden",
-                        m_MouseCursorCapturedVisibilityState == SDL_DISABLE ? "1" : "0");
+            m_MouseCursorCapturedVisibilityState =
+                    m_MouseCursorCapturedVisibilityState == SDL_ENABLE ? SDL_DISABLE : SDL_ENABLE;
             SDL_ShowCursor(m_MouseCursorCapturedVisibilityState);
+            refreshWindowsNativeCursor();
         }
         else {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,

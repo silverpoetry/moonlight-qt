@@ -23,4 +23,7 @@ app.depends = qmdnsengine moonlight-common-c h264bitstream
 win32:!winrt {
     SUBDIRS += AntiHooking
     app.depends += AntiHooking
+
+    SUBDIRS += native_cursor_test
+    native_cursor_test.file = tests/nativecursor/nativecursor.pro
 }

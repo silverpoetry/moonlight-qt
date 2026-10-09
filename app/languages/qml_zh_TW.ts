@@ -1079,6 +1079,16 @@
         <translation>為遠端桌面而非遊戲最佳化滑鼠</translation>
     </message>
     <message>
+        <location filename="../gui/SettingsView.qml" line="1400"/>
+        <source>Hide the mouse cursor when streaming starts</source>
+        <translation>串流開始時隱藏滑鼠游標</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1410"/>
+        <source>This applies to remote desktop mouse mode. You can still show or hide the cursor during a session using Ctrl+Alt+Shift+C.</source>
+        <translation>此設定適用於遠端桌面滑鼠模式。串流期間仍可使用 Ctrl+Alt+Shift+C 顯示或隱藏滑鼠游標。</translation>
+    </message>
+    <message>
         <location filename="../gui/SettingsView.qml" line="541"/>
         <location filename="../gui/SettingsView.qml" line="651"/>
         <source>Custom (%1 FPS)</source>
@@ -1249,6 +1259,16 @@
         <source>Automatically detect blocked connections (Recommended)</source>
         <translation>自動偵測被封鎖的連線 (建議)</translation>
     </message>
+    <message><source>Forward two-finger touchpad gestures</source><translation>转发双指触摸板手势</translation></message>
+    <message><source>Forward two-finger scrolling and pinch gestures to the host.</source><translation>将双指滚动和缩放手势转发到主机。</translation></message>
+    <message><source>Capture touchpad gestures</source><translation>捕捉触摸板手势</translation></message>
+    <message><source>Off</source><translation>关闭</translation></message>
+    <message><source>Three fingers only</source><translation>仅三指</translation></message>
+    <message><source>Four fingers only</source><translation>仅四指</translation></message>
+    <message><source>Three and four fingers</source><translation>三指和四指</translation></message>
+    <message><source>Capture the selected gestures while mouse capture is active, independently of system keyboard shortcuts. Other gestures stay on this PC.</source><translation>捕捉鼠标期间，将所选手势转发到主机；与捕捉系统快捷键独立，其他手势保留在本机。</translation></message>
+    <message><source>Capture three-finger gestures</source><translation>捕捉三指手勢</translation></message>
+    <message><source>Capture four-finger gestures</source><translation>捕捉四指手勢</translation></message>
 </context>
 <context>
     <name>StreamSegue</name>

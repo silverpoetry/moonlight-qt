@@ -33,8 +33,10 @@
 #define SER_MDNS "mdns"
 #define SER_QUITAPPAFTER "quitAppAfter"
 #define SER_ABSMOUSEMODE "mouseacceleration"
+#define SER_HIDECURSORONSTREAMSTART "hidecursoronstreamstart"
 #define SER_ABSTOUCHMODE "abstouchmode"
 #define SER_ENABLETOUCHPADGESTURES "enabletouchpadgestures"
+#define SER_TOUCHPADCAPTUREMODE "touchpadcapturemode"
 #define SER_DISABLEADAPTIVEINPUTTHROTTLING "disableadaptiveinputthrottling"
 #define SER_ENABLECLIPBOARDSYNC "enableclipboardsync"
 #define SER_STARTWINDOWED "startwindowed"
@@ -206,8 +208,14 @@ void StreamingPreferences::reload()
     enableMdns = settings.value(SER_MDNS, true).toBool();
     quitAppAfter = settings.value(SER_QUITAPPAFTER, false).toBool();
     absoluteMouseMode = settings.value(SER_ABSMOUSEMODE, false).toBool();
+    hideCursorOnStreamStart = settings.value(SER_HIDECURSORONSTREAMSTART, false).toBool();
     absoluteTouchMode = settings.value(SER_ABSTOUCHMODE, true).toBool();
     enableTouchpadGestures = settings.value(SER_ENABLETOUCHPADGESTURES, false).toBool();
+    // Preserve the previously enabled global gestures on first upgrade.
+    const int gestureMode = settings.value(SER_TOUCHPADCAPTUREMODE,
+                                          enableTouchpadGestures ? TPC_BOTH : TPC_OFF).toInt();
+    touchpadCaptureMode = gestureMode >= TPC_OFF && gestureMode <= TPC_BOTH ?
+                static_cast<TouchpadCaptureMode>(gestureMode) : TPC_OFF;
     disableAdaptiveInputThrottling = settings.value(SER_DISABLEADAPTIVEINPUTTHROTTLING, true).toBool();
     enableClipboardSync =
             settings.value(SER_ENABLECLIPBOARDSYNC, false).toBool();
@@ -413,8 +421,10 @@ void StreamingPreferences::save()
     settings.setValue(SER_MDNS, enableMdns);
     settings.setValue(SER_QUITAPPAFTER, quitAppAfter);
     settings.setValue(SER_ABSMOUSEMODE, absoluteMouseMode);
+    settings.setValue(SER_HIDECURSORONSTREAMSTART, hideCursorOnStreamStart);
     settings.setValue(SER_ABSTOUCHMODE, absoluteTouchMode);
     settings.setValue(SER_ENABLETOUCHPADGESTURES, enableTouchpadGestures);
+    settings.setValue(SER_TOUCHPADCAPTUREMODE, touchpadCaptureMode);
     settings.setValue(SER_DISABLEADAPTIVEINPUTTHROTTLING, disableAdaptiveInputThrottling);
     settings.setValue(SER_ENABLECLIPBOARDSYNC, enableClipboardSync);
     settings.setValue(SER_FRAMEPACING, framePacing);

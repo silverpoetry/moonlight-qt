@@ -169,7 +169,7 @@ public:
                         GestureSettings::ManipulationTranslateX |
                         GestureSettings::ManipulationTranslateY);
             m_Recognizer.TranslationMinContactCount(3);
-            m_Recognizer.TranslationMaxContactCount(3);
+            m_Recognizer.TranslationMaxContactCount(4);
             m_Recognizer.TapMinContactCount(3);
             m_Recognizer.TapMaxContactCount(3);
             m_Recognizer.HoldMinContactCount(3);
@@ -229,24 +229,19 @@ public:
 
         const bool active = enabled && m_Handler != nullptr;
         const bool useNativeProtocol = active && nativeTouchpadProtocolSupported();
-        TouchpadGlobalGestureKinds supportedGestures =
-                TouchpadGlobalGestureKinds::ThreeFingerManipulations;
-        if (useNativeProtocol) {
-            // Manipulation events expose physical positions for every contact,
-            // so they can be forwarded natively. Global action events do not
-            // expose contact positions; retain the existing three-finger action
-            // behavior only when system-key capture is active.
-            supportedGestures = supportedGestures |
-                    TouchpadGlobalGestureKinds::FourFingerManipulations |
-                    TouchpadGlobalGestureKinds::FiveFingerManipulations;
-            if (m_Handler->isSystemKeyCaptureActive()) {
+        TouchpadGlobalGestureKinds supportedGestures = TouchpadGlobalGestureKinds::None;
+        if (active) {
+            const auto mode = m_Handler->touchpadCaptureMode();
+            if (mode & StreamingPreferences::TPC_THREE) {
                 supportedGestures = supportedGestures |
+                        TouchpadGlobalGestureKinds::ThreeFingerManipulations |
                         TouchpadGlobalGestureKinds::ThreeFingerActions;
             }
-        }
-        else {
-            supportedGestures = supportedGestures |
-                    TouchpadGlobalGestureKinds::ThreeFingerActions;
+            if (mode & StreamingPreferences::TPC_FOUR) {
+                supportedGestures = supportedGestures |
+                        TouchpadGlobalGestureKinds::FourFingerManipulations |
+                        TouchpadGlobalGestureKinds::FourFingerActions;
+            }
         }
 
         if (m_Enabled == active &&
@@ -602,11 +597,24 @@ private:
     void onGlobalActionPerformed(TouchpadGesturesController const&,
                                  TouchpadGlobalActionEventArgs const& args)
     {
-        if (!shouldHandleLegacyGesture()) {
+        if (!m_Enabled || m_Handler == nullptr || !m_Handler->isCaptureActive()) {
             return;
         }
 
         switch (args.Action()) {
+        case TouchpadGlobalAction::ThreeFingerTap:
+            LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_MIDDLE);
+            LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_MIDDLE);
+            break;
+        case TouchpadGlobalAction::FourFingerTap:
+            sendKey(REMOTE_VK_LWIN, true, MODIFIER_META);
+            sendKeyTap(0x41, MODIFIER_META); // Windows action center
+            sendKey(REMOTE_VK_LWIN, false, 0);
+            break;
+        case TouchpadGlobalAction::FourFingerPressDown:
+            m_ActiveContactCount = 4;
+            m_MaxContactCount = std::max(m_MaxContactCount, 4);
+            break;
         case TouchpadGlobalAction::ThreeFingerPressDown:
             m_ActiveContactCount = 3;
             m_MaxContactCount = std::max(m_MaxContactCount, 3);
@@ -748,6 +756,11 @@ private:
             return;
         }
 
+        if (m_MaxContactCount >= 4) {
+            finishAltTabGesture();
+            return;
+        }
+
         const auto cumulative = args.Cumulative();
         const float x = cumulative.Translation.X;
         const float y = cumulative.Translation.Y;
@@ -822,6 +835,23 @@ private:
         const bool horizontal = absX > absY * THREE_FINGER_AXIS_DOMINANCE;
         const bool vertical = absY > absX * THREE_FINGER_AXIS_DOMINANCE;
 
+        if (m_MaxContactCount >= 4) {
+            finishAltTabGesture();
+            if (horizontal && absX >= THREE_FINGER_ACTION_THRESHOLD) {
+                sendKey(0xA2, true, MODIFIER_CTRL);
+                sendKey(REMOTE_VK_LWIN, true, MODIFIER_CTRL | MODIFIER_META);
+                sendKeyTap(x > 0 ? REMOTE_VK_RIGHT : REMOTE_VK_LEFT,
+                           MODIFIER_CTRL | MODIFIER_META);
+                sendKey(REMOTE_VK_LWIN, false, MODIFIER_CTRL);
+                sendKey(0xA2, false, 0);
+            }
+            else if (vertical && absY >= THREE_FINGER_ACTION_THRESHOLD) {
+                sendShowDesktop();
+            }
+            resetGestureState();
+            return;
+        }
+
         if (m_GestureMode == GestureMode::AltTab) {
             finishAltTabGesture();
         }
@@ -839,7 +869,7 @@ private:
 
     bool shouldHandleLegacyGesture()
     {
-        if (!m_Enabled || m_Handler == nullptr || !m_Handler->isSystemKeyCaptureActive()) {
+        if (!m_Enabled || m_Handler == nullptr || !m_Handler->isCaptureActive()) {
             resetGestureState();
             return false;
         }

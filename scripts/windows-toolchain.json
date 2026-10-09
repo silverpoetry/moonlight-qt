@@ -1,0 +1,7 @@
+{
+  "qtVersion": "6.11.1",
+  "qtKits": {
+    "x64": "msvc2022_64",
+    "arm64": "msvc2022_arm64"
+  }
+}

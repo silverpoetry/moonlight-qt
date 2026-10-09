@@ -1392,6 +1392,24 @@ Flickable {
                                   qsTr("NOTE: Due to a bug in GeForce Experience, this option may not work properly if your host PC has multiple monitors.")
                 }
 
+                CheckBox {
+                    id: hideCursorOnStreamStartCheck
+                    hoverEnabled: true
+                    width: parent.width
+                    text: qsTr("Hide the mouse cursor when streaming starts")
+                    font.pointSize: 12
+                    enabled: absoluteMouseCheck.checked
+                    checked: StreamingPreferences.hideCursorOnStreamStart
+                    onCheckedChanged: {
+                        StreamingPreferences.hideCursorOnStreamStart = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 10000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("This applies to remote desktop mouse mode. You can still show or hide the cursor during a session using Ctrl+Alt+Shift+C.")
+                }
+
                 Row {
                     spacing: 5
                     width: parent.width
@@ -1489,7 +1507,7 @@ Flickable {
                     hoverEnabled: true
                     width: parent.width
                     visible: SystemProperties.isRunningWindows
-                    text: qsTr("Enable native touchpad gestures")
+                    text: qsTr("Forward two-finger touchpad gestures")
                     font.pointSize: 12
                     checked: StreamingPreferences.enableTouchpadGestures
                     onCheckedChanged: {
@@ -1499,7 +1517,49 @@ Flickable {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 10000
                     ToolTip.visible: hovered
-                    ToolTip.text: qsTr("When enabled, Moonlight captures Windows precision touchpad gestures and forwards supported pinch and three-finger gestures to the host.")
+                    ToolTip.text: qsTr("Forward two-finger scrolling and pinch gestures to the host.")
+                }
+
+                Label {
+                    visible: SystemProperties.isRunningWindows
+                    text: qsTr("Capture touchpad gestures")
+                    font.pointSize: 12
+                }
+
+                CheckBox {
+                    id: captureThreeFingerCheck
+                    visible: SystemProperties.isRunningWindows
+                    width: parent.width
+                    hoverEnabled: true
+                    text: qsTr("Capture three-finger gestures")
+                    font.pointSize: 12
+                    checked: (StreamingPreferences.touchpadCaptureMode & StreamingPreferences.TPC_THREE) !== 0
+                    onClicked: {
+                        StreamingPreferences.touchpadCaptureMode = checked ?
+                            StreamingPreferences.touchpadCaptureMode | StreamingPreferences.TPC_THREE :
+                            StreamingPreferences.touchpadCaptureMode & ~StreamingPreferences.TPC_THREE
+                    }
+                    ToolTip.delay: 1000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Capture the selected gestures while mouse capture is active, independently of system keyboard shortcuts. Other gestures stay on this PC.")
+                }
+
+                CheckBox {
+                    id: captureFourFingerCheck
+                    visible: SystemProperties.isRunningWindows
+                    width: parent.width
+                    hoverEnabled: true
+                    text: qsTr("Capture four-finger gestures")
+                    font.pointSize: 12
+                    checked: (StreamingPreferences.touchpadCaptureMode & StreamingPreferences.TPC_FOUR) !== 0
+                    onClicked: {
+                        StreamingPreferences.touchpadCaptureMode = checked ?
+                            StreamingPreferences.touchpadCaptureMode | StreamingPreferences.TPC_FOUR :
+                            StreamingPreferences.touchpadCaptureMode & ~StreamingPreferences.TPC_FOUR
+                    }
+                    ToolTip.delay: 1000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Capture the selected gestures while mouse capture is active, independently of system keyboard shortcuts. Other gestures stay on this PC.")
                 }
 
                 CheckBox {

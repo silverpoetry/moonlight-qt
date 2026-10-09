@@ -963,6 +963,16 @@
         <translation>为远程桌面而不是游戏优化鼠标</translation>
     </message>
     <message>
+        <location filename="../gui/SettingsView.qml" line="1400"/>
+        <source>Hide the mouse cursor when streaming starts</source>
+        <translation>串流开始时隐藏鼠标指针</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1410"/>
+        <source>This applies to remote desktop mouse mode. You can still show or hide the cursor during a session using Ctrl+Alt+Shift+C.</source>
+        <translation>此设置适用于远程桌面鼠标模式。串流期间仍可使用 Ctrl+Alt+Shift+C 显示或隐藏鼠标指针。</translation>
+    </message>
+    <message>
         <location filename="../gui/SettingsView.qml" line="1390"/>
         <source>This enables seamless mouse control without capturing the client&apos;s mouse cursor. If the host supports native cursor streaming, Moonlight will draw the host cursor locally for lower cursor latency.</source>
         <translation>这可以实现无缝鼠标控制，而无需捕获客户端的鼠标光标。如果主机支持原生光标串流，Moonlight 会在本地绘制主机光标以降低光标延迟。</translation>
@@ -1249,6 +1259,16 @@
         <source>Automatically detect blocked connections (Recommended)</source>
         <translation>自动检测被阻止的连接 (推荐)</translation>
     </message>
+    <message><source>Forward two-finger touchpad gestures</source><translation>转发双指触摸板手势</translation></message>
+    <message><source>Forward two-finger scrolling and pinch gestures to the host.</source><translation>将双指滚动和缩放手势转发到主机。</translation></message>
+    <message><source>Capture touchpad gestures</source><translation>捕捉触摸板手势</translation></message>
+    <message><source>Off</source><translation>关闭</translation></message>
+    <message><source>Three fingers only</source><translation>仅三指</translation></message>
+    <message><source>Four fingers only</source><translation>仅四指</translation></message>
+    <message><source>Three and four fingers</source><translation>三指和四指</translation></message>
+    <message><source>Capture the selected gestures while mouse capture is active, independently of system keyboard shortcuts. Other gestures stay on this PC.</source><translation>捕捉鼠标期间，将所选手势转发到主机；与捕捉系统快捷键独立，其他手势保留在本机。</translation></message>
+    <message><source>Capture three-finger gestures</source><translation>捕捉三指手势</translation></message>
+    <message><source>Capture four-finger gestures</source><translation>捕捉四指手势</translation></message>
 </context>
 <context>
     <name>StreamSegue</name>

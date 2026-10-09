@@ -22,13 +22,16 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_FakeMouseCaptureActive(false),
       m_KeyboardCaptureActive(false),
       m_CaptureSystemKeysMode(prefs.captureSysKeysMode),
-      m_MouseCursorCapturedVisibilityState(SDL_DISABLE),
+      m_MouseCursorCapturedVisibilityState(
+          prefs.absoluteMouseMode && !prefs.hideCursorOnStreamStart ? SDL_ENABLE : SDL_DISABLE),
       m_LongPressTimer(0),
       m_StreamWidth(streamWidth),
       m_StreamHeight(streamHeight),
       m_AbsoluteMouseMode(prefs.absoluteMouseMode),
       m_AbsoluteTouchMode(prefs.absoluteTouchMode),
-      m_EnableTouchpadGestures(prefs.enableTouchpadGestures),
+      m_EnableTouchpadGestures(prefs.enableTouchpadGestures || prefs.touchpadCaptureMode != StreamingPreferences::TPC_OFF),
+      m_ForwardTwoFingerGestures(prefs.enableTouchpadGestures),
+      m_TouchpadCaptureMode(prefs.touchpadCaptureMode),
       m_DisabledTouchFeedback(false),
       m_LeftButtonReleaseTimer(0),
       m_RightButtonReleaseTimer(0),
@@ -55,6 +58,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_TouchpadCachedDeviceWidth(0),
       m_TouchpadCachedDeviceHeight(0),
       m_LocalClosePassthroughUntil(0),
+      m_WindowsNativeCursor(nullptr),
+      m_WindowsNativeCursorVisible(false),
       m_WindowsMessageHookHwnd(nullptr),
       m_WindowsMessageHookPrevWndProc(nullptr)
 {
@@ -306,6 +311,11 @@ void SdlInputHandler::setWindow(SDL_Window *window)
     }
 }
 
+bool SdlInputHandler::shouldShowMouseCursorWhileCaptured() const
+{
+    return m_MouseCursorCapturedVisibilityState == SDL_ENABLE;
+}
+
 void SdlInputHandler::raiseAllKeys()
 {
     cancelNativeTouchpadContacts();
@@ -367,10 +377,7 @@ void SdlInputHandler::notifyFocusLost()
 void SdlInputHandler::notifyFocusGained()
 {
     updateTouchpadGlobalGesturesEnabled(
-                m_EnableTouchpadGestures &&
-                (isNativeTouchpadProtocolSupported() ?
-                     isCaptureActive() :
-                     isSystemKeyCaptureActive()));
+                m_TouchpadCaptureMode != StreamingPreferences::TPC_OFF && isCaptureActive());
 }
 
 bool SdlInputHandler::isCaptureActive()
@@ -406,10 +413,7 @@ void SdlInputHandler::updateKeyboardGrabState()
 
     m_KeyboardCaptureActive = shouldGrab;
     updateTouchpadGlobalGesturesEnabled(
-                m_EnableTouchpadGestures &&
-                (isNativeTouchpadProtocolSupported() ?
-                     isCaptureActive() :
-                     shouldGrab));
+                m_TouchpadCaptureMode != StreamingPreferences::TPC_OFF && isCaptureActive());
 }
 
 bool SdlInputHandler::isSystemKeyCaptureActive()
@@ -485,6 +489,8 @@ void SdlInputHandler::setCaptureActive(bool active)
             SDL_SetRelativeMouseMode(SDL_FALSE);
         }
     }
+
+    refreshWindowsNativeCursor();
 
     // Update mouse pointer region constraints
     updatePointerRegionLock();

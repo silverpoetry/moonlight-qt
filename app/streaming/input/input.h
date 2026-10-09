@@ -99,6 +99,14 @@ public:
 
     void setWindow(SDL_Window* window);
 
+    bool shouldShowMouseCursorWhileCaptured() const;
+
+    void setWindowsNativeCursor(void* cursor);
+
+    void refreshWindowsNativeCursor();
+
+    bool handleWindowsNativeCursorMessage(unsigned int message, intptr_t lParam);
+
     void handleKeyEvent(SDL_KeyboardEvent* event);
 
     void handleMouseButtonEvent(SDL_MouseButtonEvent* event);
@@ -160,6 +168,8 @@ public:
     void endTouchpadGlobalNativeForwarding();
 
     bool isNativeTouchpadProtocolSupported() const;
+
+    StreamingPreferences::TouchpadCaptureMode touchpadCaptureMode() const { return m_TouchpadCaptureMode; }
 
     int getAttachedGamepadMask();
 
@@ -297,6 +307,8 @@ private:
     bool m_AbsoluteMouseMode;
     bool m_AbsoluteTouchMode;
     bool m_EnableTouchpadGestures;
+    bool m_ForwardTwoFingerGestures;
+    StreamingPreferences::TouchpadCaptureMode m_TouchpadCaptureMode;
     bool m_DisabledTouchFeedback;
 
     SDL_TouchFingerEvent m_TouchDownEvent[MAX_FINGERS];
@@ -336,6 +348,8 @@ private:
     int m_TouchpadCachedDeviceWidth;
     int m_TouchpadCachedDeviceHeight;
     Uint32 m_LocalClosePassthroughUntil;
+    void* m_WindowsNativeCursor;
+    bool m_WindowsNativeCursorVisible;
     void* m_WindowsMessageHookHwnd;
     void* m_WindowsMessageHookPrevWndProc;
 

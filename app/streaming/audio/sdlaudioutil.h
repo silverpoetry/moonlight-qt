@@ -15,7 +15,11 @@ public:
 private:
     Q_DISABLE_COPY(LockedSection)
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QMutexLocker<QMutex> m_Locker;
+#else
     QMutexLocker m_Locker;
+#endif
 };
 
 class SubsystemGuard

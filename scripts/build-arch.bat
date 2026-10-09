@@ -4,6 +4,13 @@ setlocal enableDelayedExpansion
 rem Run from Qt command prompt with working directory set to root of repo
 
 set BUILD_CONFIG=%1
+set EXPECTED_ARCH=%2
+
+if /I not "%EXPECTED_ARCH%"=="x64" if /I not "%EXPECTED_ARCH%"=="arm64" if /I not "%EXPECTED_ARCH%"=="x86" (
+    echo Invalid or missing target architecture - expected 'x64', 'arm64', or 'x86'
+    echo Usage: scripts\build-arch.bat ^(release^|debug^|signed-release^) ^(x64^|arm64^|x86^)
+    exit /b 1
+)
 
 rem Convert to lower case for windeployqt
 if /I "%BUILD_CONFIG%"=="debug" (
@@ -32,28 +39,43 @@ if /I "%BUILD_CONFIG%"=="debug" (
                 exit /b 1
             )
         ) else (
-            echo Invalid build configuration - expected 'debug' or 'release'
-            echo Usage: scripts\build-arch.bat ^(release^|debug^)
+            echo Invalid build configuration - expected 'debug', 'release', or 'signed-release'
+            echo Usage: scripts\build-arch.bat ^(release^|debug^|signed-release^) ^(x64^|arm64^|x86^)
             exit /b 1
         )
     )
 )
 
-rem Locate qmake and determine if we're using qmake.exe or (host-)qmake.bat.
-rem The batch wrappers are used by some cross-compiled Qt distributions.
-where qmake.bat >nul 2>&1
-if !ERRORLEVEL! EQU 0 (
+rem The Qt kit must be selected explicitly. Never discover qmake from PATH:
+rem package managers and unrelated applications may expose an ABI-compatible
+rem but operationally different Qt installation there.
+if not defined MOONLIGHT_QT_BIN (
+    echo MOONLIGHT_QT_BIN is not set.
+    echo Use scripts\build-windows.ps1 or set it to the selected Qt kit's bin directory.
+    goto Error
+)
+
+for %%i in ("%MOONLIGHT_QT_BIN%") do set MOONLIGHT_QT_BIN=%%~fi
+if not exist "%MOONLIGHT_QT_BIN%\" (
+    echo The configured Qt bin directory does not exist: %MOONLIGHT_QT_BIN%
+    goto Error
+)
+
+rem Prepend only the explicitly selected kit so Qt subprocesses resolve tools
+rem from the same installation. The fully resolved QT_INSTALL_BINS value is
+rem checked below before any compilation starts.
+set PATH=%MOONLIGHT_QT_BIN%;%PATH%
+
+if exist "%MOONLIGHT_QT_BIN%\qmake.bat" (
     set QMAKE_CMD=call qmake.bat
 ) else (
-    where host-qmake.bat >nul 2>&1
-    if !ERRORLEVEL! EQU 0 (
+    if exist "%MOONLIGHT_QT_BIN%\host-qmake.bat" (
         set QMAKE_CMD=call host-qmake.bat
     ) else (
-        where qmake.exe >nul 2>&1
-        if !ERRORLEVEL! EQU 0 (
+        if exist "%MOONLIGHT_QT_BIN%\qmake.exe" (
             set QMAKE_CMD=qmake.exe
         ) else (
-            echo Unable to find QMake. Did you add Qt bins to your PATH?
+            echo Unable to find qmake in the configured Qt kit: %MOONLIGHT_QT_BIN%
             goto Error
         )
     )
@@ -66,6 +88,19 @@ for /F "usebackq delims=" %%i in (`%QMAKE_CMD% -query QT_INSTALL_BINS`) do set Q
 for /F "usebackq delims=" %%i in (`%QMAKE_CMD% -query QT_HOST_BINS`) do set HOSTBIN_PATH=%%i
 for /F "usebackq delims=" %%i in (`%QMAKE_CMD% -query QT_INSTALL_ARCHDATA`) do set QT_ARCHDATA=%%i
 for /F "usebackq delims=" %%i in (`%QMAKE_CMD% -query QT_VERSION`) do set QT_VERSION=%%i
+
+for %%i in ("%QT_PATH%") do set QT_PATH=%%~fi
+if /I not "%QT_PATH%"=="%MOONLIGHT_QT_BIN%" (
+    echo The selected qmake resolved a different Qt target bin directory.
+    echo Configured: %MOONLIGHT_QT_BIN%
+    echo Resolved:   %QT_PATH%
+    goto Error
+)
+
+if defined MOONLIGHT_QT_VERSION if not "%QT_VERSION%"=="%MOONLIGHT_QT_VERSION%" (
+    echo Unexpected Qt version: %QT_VERSION% ^(expected %MOONLIGHT_QT_VERSION%^)
+    goto Error
+)
 
 if not exist "%QT_ARCHDATA%\mkspecs\qconfig.pri" (
     echo Unable to locate Qt architecture metadata in %QT_ARCHDATA%
@@ -89,6 +124,11 @@ if /I "%QT_ARCH%"=="arm64" (
     set ARCH=x86
 ) else (
     echo Unsupported Qt target architecture: %QT_ARCH%
+    goto Error
+)
+
+if /I not "%ARCH%"=="%EXPECTED_ARCH%" (
+    echo Qt target architecture mismatch: detected %ARCH%, requested %EXPECTED_ARCH%
     goto Error
 )
 
@@ -167,6 +207,12 @@ if !ERRORLEVEL! NEQ 0 (
     echo Visual Studio environment did not provide cl.exe
     goto Error
 )
+set DUMPBIN_PATH=
+for /f "delims=" %%i in ('where dumpbin.exe') do if not defined DUMPBIN_PATH set DUMPBIN_PATH=%%i
+if not defined DUMPBIN_PATH (
+    echo Visual Studio environment did not provide dumpbin.exe
+    goto Error
+)
 
 rem Find VC redistributable DLLs
 for /f "usebackq delims=" %%i in (`%VSWHERE% -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VC\Redist\MSVC\*\%ARCH%\Microsoft.VC*.CRT`) do set VC_REDIST_DLL_PATH=%%i
@@ -213,6 +259,10 @@ popd
 if /I "%ARCH%" EQU "x64" (
     echo Running protocol conformance tests
     "%BUILD_FOLDER%\tests\clipboardmanifest\%BUILD_CONFIG%\clipboard-manifest-test.exe"
+    if !ERRORLEVEL! NEQ 0 goto Error
+
+    echo Running native cursor conformance tests
+    "%BUILD_FOLDER%\tests\nativecursor\%BUILD_CONFIG%\native-cursor-test.exe"
     if !ERRORLEVEL! NEQ 0 goto Error
 )
 
@@ -293,6 +343,10 @@ if exist "%DEPLOY_FOLDER%\qml\QtQuick\NativeStyle" rmdir /s /q "%DEPLOY_FOLDER%\
 rem icuuc.dll ships with all supported OSes (and Qt incorrectly deploys the x64 version on ARM64)
 if exist "%DEPLOY_FOLDER%\icuuc.dll" del "%DEPLOY_FOLDER%\icuuc.dll"
 
+echo Resolving transitive Qt runtime dependencies
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SOURCE_ROOT%\scripts\deploy-windows-runtime-dependencies.ps1" -DeployDirectory "%DEPLOY_FOLDER%" -RuntimeDirectory "%QT_PATH%" -DeferredRuntimeDirectory "%VC_REDIST_DLL_PATH%" -DumpBinPath "%DUMPBIN_PATH%" -TargetArchitecture "%ARCH%" -Resolve
+if !ERRORLEVEL! NEQ 0 goto Error
+
 echo Copying third-party notices
 copy "%SOURCE_ROOT%\THIRD_PARTY_NOTICES.txt" "%DEPLOY_FOLDER%\THIRD_PARTY_NOTICES.txt"
 if !ERRORLEVEL! NEQ 0 goto Error
@@ -316,7 +370,7 @@ if "%ML_SYMBOL_STORE%" NEQ "" (
 )
 
 echo Building MSI
-cmd /c "set VERSION= && msbuild -Restore %SOURCE_ROOT%\wix\Moonlight\Moonlight.wixproj /p:Configuration=%BUILD_CONFIG% /p:Platform=%ARCH% /p:MSBuildProjectExtensionsPath=%BUILD_FOLDER%\"
+cmd /c "set VERSION= && msbuild -Restore %SOURCE_ROOT%\wix\Moonlight\Moonlight.wixproj /p:RestoreConfigFile=%SOURCE_ROOT%\NuGet.Config /p:Configuration=%BUILD_CONFIG% /p:Platform=%ARCH% /p:MSBuildProjectExtensionsPath=%BUILD_FOLDER%\"
 if !ERRORLEVEL! NEQ 0 goto Error
 
 echo Copying application binary to deployment directory
@@ -327,6 +381,10 @@ echo Building portable package
 rem This must be done after WiX harvesting and signing, since the VCRT dlls are MS signed
 rem and should not be harvested for inclusion in the full installer
 copy "%VC_REDIST_DLL_PATH%\*.dll" %DEPLOY_FOLDER%
+if !ERRORLEVEL! NEQ 0 goto Error
+
+echo Verifying portable runtime dependency closure
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SOURCE_ROOT%\scripts\deploy-windows-runtime-dependencies.ps1" -DeployDirectory "%DEPLOY_FOLDER%" -DumpBinPath "%DUMPBIN_PATH%" -TargetArchitecture "%ARCH%"
 if !ERRORLEVEL! NEQ 0 goto Error
 
 rem Since we don't publish Windows installers for CI builds, let's use the user profile
@@ -349,4 +407,4 @@ exit /b 0
 
 :Error
 echo Build failed!
-exit /b !ERRORLEVEL!
+exit /b 1

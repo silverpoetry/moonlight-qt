@@ -204,6 +204,7 @@ SOURCES += \
     streaming/input/reltouch.cpp \
     streaming/input/windowstouchpadglobal.cpp \
     streaming/input/windowstouchpad.cpp \
+    streaming/nativecursor.cpp \
     streaming/session.cpp \
     streaming/clipboardfilemanifest.cpp \
     streaming/audio/audio.cpp \
@@ -244,6 +245,7 @@ HEADERS += \
     cli/startstream.h \
     settings/streamingpreferences.h \
     streaming/input/input.h \
+    streaming/nativecursor.h \
     streaming/session.h \
     streaming/clipboardfilemanifest.h \
     streaming/audio/audiodeviceprewarmer.h \
@@ -263,8 +265,12 @@ HEADERS += \
     backend/systemproperties.h
 
 win32 {
-    SOURCES += streaming/clipboardvirtualfiles_win.cpp
-    HEADERS += streaming/clipboardvirtualfiles_win.h
+    SOURCES += \
+        platform/windows/nativecursor_win.cpp \
+        streaming/clipboardvirtualfiles_win.cpp
+    HEADERS += \
+        platform/windows/nativecursor_win.h \
+        streaming/clipboardvirtualfiles_win.h
 }
 
 # Platform-specific renderers and decoders

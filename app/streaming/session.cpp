@@ -1,5 +1,6 @@
 #include "session.h"
 #include "clipboardfilemanifest.h"
+#include "nativecursor.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
@@ -1994,17 +1995,22 @@ void Session::applyNativeCursor(const NativeCursorEvent* cursorEvent)
 
     if (!cursorEvent->visible) {
         SDL_ShowCursor(SDL_DISABLE);
+        m_InputHandler->refreshWindowsNativeCursor();
         return;
     }
 
-    const quint64 requiredImageBytes = static_cast<quint64>(cursorEvent->width) *
-            static_cast<quint64>(cursorEvent->height) * 4;
     const quint32 scaleX = cursorEvent->scaleX == 0 ? 1u << 16 : cursorEvent->scaleX;
     const quint32 scaleY = cursorEvent->scaleY == 0 ? 1u << 16 : cursorEvent->scaleY;
+    const quint64 monochromePitch = (static_cast<quint64>(cursorEvent->width) + 7) / 8;
+    const quint64 requiredImageBytes = cursorEvent->format == LI_NATIVE_CURSOR_FORMAT_BGRA ?
+                static_cast<quint64>(cursorEvent->width) * cursorEvent->height * 4 :
+                monochromePitch * cursorEvent->height * 2;
+    const bool supportedFormat = cursorEvent->format == LI_NATIVE_CURSOR_FORMAT_BGRA ||
+            cursorEvent->format == LI_NATIVE_CURSOR_FORMAT_MONOCHROME;
 
     if (cursorEvent->shapeChanged &&
             (m_NativeCursor == nullptr || cursorEvent->shapeId != m_NativeCursorShapeId) &&
-            cursorEvent->format == LI_NATIVE_CURSOR_FORMAT_BGRA &&
+            supportedFormat &&
             cursorEvent->width > 0 &&
             cursorEvent->height > 0 &&
             static_cast<quint64>(cursorEvent->imageData.size()) >= requiredImageBytes) {
@@ -2012,6 +2018,7 @@ void Session::applyNativeCursor(const NativeCursorEvent* cursorEvent)
         m_NativeCursorSourceHeight = cursorEvent->height;
         m_NativeCursorSourceHotspotX = cursorEvent->hotspotX;
         m_NativeCursorSourceHotspotY = cursorEvent->hotspotY;
+        m_NativeCursorSourceFormat = cursorEvent->format;
         m_NativeCursorSourceShapeId = cursorEvent->shapeId;
         m_NativeCursorSourceImageData = cursorEvent->imageData.left(static_cast<int>(requiredImageBytes));
     }
@@ -2021,66 +2028,37 @@ void Session::applyNativeCursor(const NativeCursorEvent* cursorEvent)
              m_NativeCursorSourceShapeId != m_NativeCursorShapeId ||
              scaleX != m_NativeCursorScaleX ||
              scaleY != m_NativeCursorScaleY)) {
-        QImage cursorImage(reinterpret_cast<const uchar*>(m_NativeCursorSourceImageData.constData()),
-                           m_NativeCursorSourceWidth,
-                           m_NativeCursorSourceHeight,
-                           m_NativeCursorSourceWidth * 4,
-                           QImage::Format_ARGB32);
-        const int scaledWidth = qMax(1, static_cast<int>((static_cast<quint64>(m_NativeCursorSourceWidth) * scaleX + 0x8000) >> 16));
-        const int scaledHeight = qMax(1, static_cast<int>((static_cast<quint64>(m_NativeCursorSourceHeight) * scaleY + 0x8000) >> 16));
-        QImage scaledCursorImage = cursorImage.scaled(scaledWidth,
-                                                      scaledHeight,
-                                                      Qt::IgnoreAspectRatio,
-                                                      Qt::SmoothTransformation)
-                .convertToFormat(QImage::Format_ARGB32);
-        const int hotspotX = qMin(scaledWidth - 1,
-                                  qMax(0, static_cast<int>((static_cast<quint64>(m_NativeCursorSourceHotspotX) * scaleX + 0x8000) >> 16)));
-        const int hotspotY = qMin(scaledHeight - 1,
-                                  qMax(0, static_cast<int>((static_cast<quint64>(m_NativeCursorSourceHotspotY) * scaleY + 0x8000) >> 16)));
-        SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(
-                    scaledCursorImage.bits(),
-                    scaledCursorImage.width(),
-                    scaledCursorImage.height(),
-                    32,
-                    scaledCursorImage.bytesPerLine(),
-                    SDL_PIXELFORMAT_BGRA32);
-        if (surface != nullptr) {
-            SDL_Cursor* cursor = SDL_CreateColorCursor(surface,
-                                                       hotspotX,
-                                                       hotspotY);
-            SDL_FreeSurface(surface);
-
-            if (cursor != nullptr) {
-                SDL_Cursor* oldCursor = m_NativeCursor;
-                m_NativeCursor = cursor;
-                m_NativeCursorShapeId = m_NativeCursorSourceShapeId;
-                m_NativeCursorScaleX = scaleX;
-                m_NativeCursorScaleY = scaleY;
-                SDL_SetCursor(m_NativeCursor);
-
-                if (oldCursor != nullptr) {
-                    SDL_FreeCursor(oldCursor);
-                }
+        auto cursor = NativeCursor::create(m_NativeCursorSourceFormat,
+                                           m_NativeCursorSourceImageData,
+                                           m_NativeCursorSourceWidth,
+                                           m_NativeCursorSourceHeight,
+                                           m_NativeCursorSourceHotspotX,
+                                           m_NativeCursorSourceHotspotY,
+                                           scaleX,
+                                           scaleY);
+        if (cursor != nullptr) {
+            if (cursor->platformCursor() != nullptr) {
+                m_InputHandler->setWindowsNativeCursor(cursor->platformCursor());
             }
             else {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                            "SDL_CreateColorCursor() failed for native cursor: %s",
-                            SDL_GetError());
+                m_InputHandler->setWindowsNativeCursor(nullptr);
+                SDL_SetCursor(cursor->sdlCursor());
             }
+
+            m_NativeCursor = std::move(cursor);
+            m_NativeCursorShapeId = m_NativeCursorSourceShapeId;
+            m_NativeCursorScaleX = scaleX;
+            m_NativeCursorScaleY = scaleY;
         }
         else {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                        "SDL_CreateRGBSurfaceWithFormatFrom() failed for native cursor: %s",
+                        "Failed to create native cursor: %s",
                         SDL_GetError());
         }
     }
-    else if (m_NativeCursor != nullptr) {
-        SDL_SetCursor(m_NativeCursor);
-    }
-
-    const char* nativeCursorUserHidden = SDL_GetHint("MoonlightNativeCursorUserHidden");
-    SDL_ShowCursor(nativeCursorUserHidden != nullptr && strcmp(nativeCursorUserHidden, "1") == 0 ?
-                   SDL_DISABLE : SDL_ENABLE);
+    SDL_ShowCursor(m_InputHandler->shouldShowMouseCursorWhileCaptured() ?
+                   SDL_ENABLE : SDL_DISABLE);
+    m_InputHandler->refreshWindowsNativeCursor();
 }
 
 
@@ -2567,6 +2545,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_NativeCursorSourceHeight(0),
       m_NativeCursorSourceHotspotX(0),
       m_NativeCursorSourceHotspotY(0),
+      m_NativeCursorSourceFormat(0),
       m_VideoDecoder(nullptr),
       m_DecoderLock(SDL_CreateMutex()),
       m_AudioMuted(false),
@@ -2706,7 +2685,8 @@ bool Session::initialize(QQuickWindow* qtWindow)
     LiInitializeStreamConfiguration(&m_StreamConfig);
     m_StreamConfig.width = m_Preferences->width;
     m_StreamConfig.height = m_Preferences->height;
-    m_StreamConfig.enableNativeCursor = m_Preferences->absoluteMouseMode;
+    m_StreamConfig.enableNativeCursor = m_Preferences->absoluteMouseMode ?
+                NativeCursor::protocolVersion() : 0;
     m_StreamConfig.enableClipboardSync = m_Preferences->enableClipboardSync;
     m_StreamConfig.clipboardCapabilities = 0;
     if (m_StreamConfig.enableClipboardSync) {
@@ -4601,6 +4581,7 @@ DispatchDeferredCleanup:
     // Destroy the input handler now. This must be destroyed
     // before allowwing the UI to continue execution or it could
     // interfere with SDLGamepadKeyNavigation.
+    m_InputHandler->setWindowsNativeCursor(nullptr);
     delete m_InputHandler;
     m_InputHandler = nullptr;
 
@@ -4640,8 +4621,7 @@ DispatchDeferredCleanup:
     // This must be called after the decoder is deleted, because
     // the renderer may want to interact with the window
     if (m_NativeCursor != nullptr) {
-        SDL_FreeCursor(m_NativeCursor);
-        m_NativeCursor = nullptr;
+        m_NativeCursor.reset();
     }
 
     SDL_DestroyWindow(m_Window);
